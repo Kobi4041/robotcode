@@ -1,63 +1,58 @@
-import math
+import cv2
+import mediapipe as mp
+from gestures import count_fingers, get_combo_action
+from xgolib import XGO  # החיבור לרובוט הפיזי
 
-# היסטוריית תנועה
-finger_history = []
-come_here_history = []
+# אתחול הרובוט
+dog = XGO(port='/dev/ttyAMA0') 
 
-def detect_circle(hand_lms):
-    global finger_history
-    pos = (hand_lms.landmark[8].x, hand_lms.landmark[8].y)
-    finger_history.append(pos)
-    if len(finger_history) > 10: finger_history.pop(0)
-    if len(finger_history) < 10: return False
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    min_x = min([p[0] for p in finger_history]); max_x = max([p[0] for p in finger_history])
-    min_y = min([p[1] for p in finger_history]); max_y = max([p[1] for p in finger_history])
-    return (max_x - min_x) > 0.05 and (max_y - min_y) > 0.05
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
 
-def detect_come_here(total_fingers):
-    global come_here_history
-    come_here_history.append(total_fingers)
-    if len(come_here_history) > 20: come_here_history.pop(0)
-    return max(come_here_history) >= 4 and min(come_here_history) <= 1
+last_command = ""
 
-def count_fingers(hand_lms, hand_type):
-    fingers = []
-    # זיהוי אגודל (מרחק מהזרת)
-    thumb_tip = hand_lms.landmark[4]
-    pinky_base = hand_lms.landmark[17]
-    dist = math.sqrt((thumb_tip.x - pinky_base.x)**2 + (thumb_tip.y - pinky_base.y)**2)
-    fingers.append(1 if dist > 0.18 else 0)
+while cap.isOpened():
+    success, img = cap.read()
+    if not success: break
 
-    # 4 אצבעות
-    for tip in [8, 12, 16, 20]:
-        fingers.append(1 if hand_lms.landmark[tip].y < hand_lms.landmark[tip-2].y else 0)
+    img = cv2.flip(img, 1)
+    results = hands.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     
-    total = fingers.count(1)
+    current_ui = {"Left": "None", "Right": "None"}
 
-    # מחוות תנועה - רק ביד ימין (ללא DANCE למניעת בלבול)
-    if hand_type == "Right":
-        if detect_come_here(total): return "COME"
-        if fingers[1] == 1 and total <= 2:
-            if detect_circle(hand_lms): return "SPIN"
+    if results.multi_hand_landmarks:
+        for i, hand_lms in enumerate(results.multi_hand_landmarks):
+            label = results.multi_handedness[i].classification[0].label
+            gesture = count_fingers(hand_lms, label)
+            current_ui[label] = gesture
 
-    # מחוות סטטיות
-    if total == 0: return "SIT"
-    if total == 5: return "STAND"
+    # זיהוי הפעולה מה-gestures.py (שתי ידיים סגורות = "LIE DOWN")
+    final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
     
-    # DANCE - רק ביד שמאל
-    if hand_type == "Left" and total == 2 and fingers[1] == 1 and fingers[2] == 1:
-        return "DANCE"
-        
-    if total == 1 and fingers[1] == 1: return "HELLO"
-    return "READY"
+    # --- לוגיקת הביצוע שביקשת ---
+    if final_cmd != last_command:
+        # הפעולה היחידה שתתבצע פיזית
+        if final_cmd == "LIE DOWN":
+            print("Executing Physical Action: SIT/LIE DOWN")
+            dog.action(13) 
+        else:
+            # כל פקודה אחרת (FOLLOW, STAND וכו') - רק הדפסה, בלי תנועה ברובוט
+            print(f"Detected {final_cmd}, but ignoring physical movement.")
+            # אנחנו עוצרים את הכלב כדי שלא ימשיך פעולות קודמות בטעות
+            dog.stop() 
+            
+        last_command = final_cmd
 
-def get_combo_action(left_gesture, right_gesture):
-    if right_gesture == "COME": return "FOLLOW"
-    if right_gesture == "SPIN": return "SPINNING"
-    if left_gesture == "SIT" and right_gesture == "SIT": return "LIE DOWN"
-    if left_gesture == "STAND" and right_gesture == "STAND": return "ATTENTION"
+    # --- תצוגה על המסך (תמיד מציג מה מזוהה) ---
+    cv2.putText(img, f"CMD: {final_cmd}", (20, 50), 1, 2, (0, 255, 0), 2)
+    cv2.putText(img, f"L: {current_ui['Left']}  R: {current_ui['Right']}", (20, 90), 1, 1.5, (255, 255, 255), 2)
     
-    for g in [right_gesture, left_gesture]:
-        if g not in ["None", "READY", "UNKNOWN"]: return g
-    return "READY"
+    cv2.imshow("XGO Safe Control", img)
+    if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+cap.release()
+cv2.destroyAllWindows()
