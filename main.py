@@ -33,40 +33,41 @@ while cap.isOpened():
             gesture = count_fingers(hand_lms, label)
             current_ui[label] = gesture
             
+            # צבעים לפי מצב
             if gesture == "SPIN": colors[label] = (255, 0, 255)
             elif gesture == "COME": colors[label] = (255, 255, 0)
             elif gesture in ["SIT", "STAND"]: colors[label] = (0, 255, 0)
 
-            if label == "Right" and gesture == "SPIN" and len(finger_history) > 1:
-                for j in range(1, len(finger_history)):
-                    p1 = (int(finger_history[j-1][0]*w), int(finger_history[j-1][1]*h))
-                    p2 = (int(finger_history[j][0]*w), int(finger_history[j][1]*h))
-                    cv2.line(img, p1, p2, (255, 0, 255), 3)
-
+            # ציור שלד היד
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
+    # זיהוי הפקודה הסופית
     final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
     
-    # --- ביצוע פעולה פיזית (מסונן) ---
+    # --- ביצוע פעולה פיזית (עכשיו גם ATTENTION וגם LIE DOWN) ---
     if final_cmd != last_final_cmd:
-        # כאן קורה השינוי: רק LIE DOWN עובר לרובוט
         if final_cmd == "LIE DOWN":
-            print("Physical Action triggered: LIE DOWN")
+            print("Physical Action: LIE DOWN (13)")
             robot.action(13) 
+            
+        elif final_cmd == "ATTENTION":
+            print("Physical Action: ATTENTION/STAND (1)")
+            robot.action(1)  # פקודת עמידה דרוכה
+            
         else:
-            # כל פקודה אחרת (FOLLOW, SPINNING, וכו') - הרובוט עוצר פיזית
-            print(f"Logic detected {final_cmd}, but physical robot is blocked.")
+            # כל שאר הפקודות עדיין חסומות פיזית (רק תצוגה)
+            print(f"Logic detected {final_cmd}, no physical move.")
             robot.stop() 
             
         last_final_cmd = final_cmd
 
-    # ממשק משתמש (נשאר מלא כדי שתראה מה מזוהה)
+    # ממשק משתמש
     cv2.rectangle(img, (10, 10), (300, 150), (40, 40, 40), -1)
     cv2.putText(img, f"L: {current_ui['Left']}", (20, 50), 1, 1.5, colors['Left'], 2)
     cv2.putText(img, f"R: {current_ui['Right']}", (20, 90), 1, 1.5, colors['Right'], 2)
     cv2.putText(img, f"CMD: {final_cmd}", (20, 130), 1, 1.8, (255, 255, 255), 2)
 
-    cv2.imshow("XGO Lie Down ONLY Mode", img)
+    cv2.imshow("XGO Control - LieDown & Attention", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
