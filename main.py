@@ -16,6 +16,8 @@ mp_draw = mp.solutions.drawing_utils
 
 last_final_cmd = ""
 
+print("System is running. Press 'q' to quit.")
+
 while cap.isOpened():
     success, img = cap.read()
     if not success: break
@@ -33,41 +35,49 @@ while cap.isOpened():
             gesture = count_fingers(hand_lms, label)
             current_ui[label] = gesture
             
-            # צבעים לפי מצב
-            if gesture == "SPIN": colors[label] = (255, 0, 255)
-            elif gesture == "COME": colors[label] = (255, 255, 0)
-            elif gesture in ["SIT", "STAND"]: colors[label] = (0, 255, 0)
+            # צבע ירוק לידיים פתוחות/סגורות (פעולות מאושרות)
+            if gesture in ["SIT", "STAND"]:
+                colors[label] = (0, 255, 0)
 
-            # ציור שלד היד
+            # ציור שלד היד על המסך
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # זיהוי הפקודה הסופית
+    # קבלת הפקודה הסופית מה-Gestures
     final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
     
-    # --- ביצוע פעולה פיזית (עכשיו גם ATTENTION וגם LIE DOWN) ---
+    # --- לוגיקת ביצוע פיזית מעודכנת ---
     if final_cmd != last_final_cmd:
+        
+        # 1. פקודת שכיבה (שתי ידיים סגורות)
         if final_cmd == "LIE DOWN":
-            print("Physical Action: LIE DOWN (13)")
-            robot.action(13) 
+            print(">>> Physical Action: LIE DOWN (13)")
+            robot.action(13)
             
-        elif final_cmd == "ATTENTION":
-            print("Physical Action: ATTENTION/STAND (1)")
-            robot.action(1)  # פקודת עמידה דרוכה
+        # 2. פקודת עמידה (שתי ידיים פתוחות או לפחות אחת פתוחה)
+        elif final_cmd in ["ATTENTION", "STAND"]:
+            print(">>> Physical Action: STAND UP (1)")
+            robot.action(1) 
             
+        # 3. כל מצב אחר - עוצרים תנועה פיזית (הליכה/סיבוב) אבל לא "תוקעים" את העמידה
         else:
-            # כל שאר הפקודות עדיין חסומות פיזית (רק תצוגה)
-            print(f"Logic detected {final_cmd}, no physical move.")
-            robot.stop() 
-            
+            print(f"Displaying: {final_cmd} (No physical move)")
+            # עצירה רק אם הכלב היה באמצע תנועה כמו הליכה
+            robot.stop()
+
         last_final_cmd = final_cmd
 
-    # ממשק משתמש
-    cv2.rectangle(img, (10, 10), (300, 150), (40, 40, 40), -1)
-    cv2.putText(img, f"L: {current_ui['Left']}", (20, 50), 1, 1.5, colors['Left'], 2)
-    cv2.putText(img, f"R: {current_ui['Right']}", (20, 90), 1, 1.5, colors['Right'], 2)
-    cv2.putText(img, f"CMD: {final_cmd}", (20, 130), 1, 1.8, (255, 255, 255), 2)
+    # --- ממשק משתמש על המסך ---
+    # רקע כהה לטקסט
+    cv2.rectangle(img, (10, 10), (320, 160), (40, 40, 40), -1)
+    
+    cv2.putText(img, f"Left Hand: {current_ui['Left']}", (20, 50), 1, 1.5, colors['Left'], 2)
+    cv2.putText(img, f"Right Hand: {current_ui['Right']}", (20, 90), 1, 1.5, colors['Right'], 2)
+    
+    # הצגת הפקודה הסופית בצבע בולט
+    cmd_color = (0, 255, 0) if final_cmd in ["LIE DOWN", "ATTENTION"] else (255, 255, 255)
+    cv2.putText(img, f"ROBOT: {final_cmd}", (20, 140), 1, 2, cmd_color, 3)
 
-    cv2.imshow("XGO Control - LieDown & Attention", img)
+    cv2.imshow("XGO Control Center", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
