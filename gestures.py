@@ -44,20 +44,14 @@ def count_fingers(hand_lms, hand_type):
     # מחוות סטטיות
     if total == 0: return "SIT"
     if total == 5: return "STAND"
-    
-    # DANCE - רק ביד שמאל
-    if hand_type == "Left" and total == 2 and fingers[1] == 1 and fingers[2] == 1:
-        return "DANCE"
-        
-    if total == 1 and fingers[1] == 1: return "HELLO"
-    return "READY"
+    if total == 2: return "DANCE"
+    if total == 1: return "HELLO"
+
+    return "UNKNOWN"
 
 def get_combo_action(left_gesture, right_gesture):
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     if left_gesture == "SIT" and right_gesture == "SIT": return "LIE DOWN"
     if left_gesture == "STAND" and right_gesture == "STAND": return "ATTENTION"
-    
-    for g in [right_gesture, left_gesture]:
-        if g not in ["None", "READY", "UNKNOWN"]: return g
-    return "READY"
+    return "UNKNOWN"
