@@ -50,15 +50,21 @@ while True:
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
     # ביצוע הפעולות שביקשת
-    if robot:
+  if robot:
         if gesture == "SIT" and last_action != "SIT":
-            robot.action(13) # שכיבה
+            # במקום פעולה זמנית, אנחנו מנמיכים את הגוף למינימום (-60 מ"מ)
+            # זה מצב סטטי - הוא יישאר למטה ולא יקום לבד
+            robot.translation(0, 0, -60) 
             last_action = "SIT"
-            print(">>> Doing: SIT")
+            print(">>> Doing: STATIC SIT (Locked Down)")
+            
         elif gesture == "STAND" and last_action != "STAND":
-            robot.action(1) # עמידה
+            # החזרת הגוף לגובה 0 (עמידה רגילה)
+            robot.translation(0, 0, 0)
+            # פקודה 1 מוודאת שהרגליים מתיישרות למצב עמידה תקני
+            robot.action(1) 
             last_action = "STAND"
-            print(">>> Doing: STAND")
+            print(">>> Doing: STATIC STAND (Locked Up)")
 
     # הצגת המצב על המסך
     cv2.putText(img, f"Gesture: {gesture}", (10, 50), 1, 2, (0, 255, 0), 2)
@@ -69,3 +75,4 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+
