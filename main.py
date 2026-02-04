@@ -68,7 +68,8 @@ while cap.isOpened():
     # לוגיקת ביצוע פיזית
     if final_cmd != last_final_cmd:
         if final_cmd == "LIE DOWN": robot.translation('z',-50)
-        elif final_cmd in ["ATTENTION", "STAND"]: robot.action(1)
+        elif final_cmd =="ATTENTION": robot.action(1)
+        elif final_cmd =="HELLO": robot.action(13)
         else: robot.stop()
         last_final_cmd = final_cmd
 
@@ -77,4 +78,3 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
-
