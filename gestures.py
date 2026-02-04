@@ -72,8 +72,6 @@ def count_fingers(hand_lms, hand_type):
 
 def get_combo_action(left_gesture, right_gesture):
     # עדיפות 1: שלום (ביד אחת - ימין או שמאל)
-    if right_gesture == "WAVE" or left_gesture == "WAVE":
-        return "HELLO"
 
     # עדיפות 2: שתי ידיים (מצבים סטטיים)
     if left_gesture == "SIT" and right_gesture == "SIT": 
@@ -82,6 +80,7 @@ def get_combo_action(left_gesture, right_gesture):
         return "ATTENTION"
     
     # עדיפות 3: מחוות דינמיות בודדות
+    if right_gesture == "WAVE": return "HELLO"
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     
