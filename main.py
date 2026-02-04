@@ -8,18 +8,27 @@ try:
     from xgolib import XGO
     robot = XGO(port='/dev/ttyAMA0')
     IS_SIM = False
+    
+    print(">>> Initializing Connection...")
+    # המתנה ארוכה יותר כדי לוודא שהרובוט "התעורר"
+    time.sleep(2.0) 
+    
+    # פקודת עמידה כפולה כדי לוודא שהוא קם ב-100%
+    robot.action(1) 
     time.sleep(0.5)
-    robot.action(1) # עמידה ראשונית
-    print(">>> XGO Ready: Right hand controls stand/sit")
+    robot.action(1)
+    
+    print(">>> Robot should be STANDING and Ready")
 except (ImportError, ModuleNotFoundError):
     IS_SIM = True
     class XGO_Mock:
-        def action(self, cmd_id): print(f"ROBOT ACTION: {cmd_id}")
+        def action(self, cmd_id): print(f"ACTION SENT: {cmd_id}")
     robot = XGO_Mock()
+    print(">>> Running in Simulation Mode")
 
 # --- משתני שליטה ---
-last_executed_action = 1 # 1 = עמידה, 13 = שכיבה
-required_duration = 1.0  # זמן אישור קצר ומהיר (שנייה אחת)
+last_executed_action = 1  # מתחילים במצב עמידה (1)
+required_duration = 1.0   # זמן אישור של שנייה אחת
 gesture_start_time = 0
 current_stable_gesture = "None"
 
@@ -41,27 +50,27 @@ while cap.isOpened():
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
             label = results.multi_handedness[i].classification[0].label
             
-            # מתייחסים רק ליד ימין
+            # מתמקדים רק ביד ימין
             if label == "Right":
                 right_hand_status = count_fingers(hand_lms, "Right")
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
-                break # מצאנו את ימין, לא צריך להמשיך בלולאה
+                break
 
-    # תרגום מצב היד לפקודת רובוט
+    # תרגום ה-Gesture לפעולה (Action 13 לשכיבה, Action 1 לעמידה)
     target_action = None
-    if right_hand_status == "SIT": # אגרוף סגור
+    if right_hand_status == "SIT": 
         target_action = 13
-    elif right_hand_status == "STAND": # יד פתוחה
+    elif right_hand_status == "STAND": 
         target_action = 1
 
-    # --- לוגיקת אישור וביצוע ---
+    # --- לוגיקת אישור ונעילה ---
     if target_action is not None:
         if target_action == current_stable_gesture:
             elapsed = time.time() - gesture_start_time
             
-            # מד טעינה קטן מעל היד
+            # מד טעינה ויזואלי
             progress = min(elapsed / required_duration, 1.0)
-            cv2.rectangle(img, (20, h-60), (int(20 + (200 * progress)), h-40), (0, 255, 0), -1)
+            cv2.rectangle(img, (20, h-50), (int(20 + (w-40)*progress), h-30), (0, 255, 0), -1)
             
             if elapsed >= required_duration and target_action != last_executed_action:
                 robot.action(target_action)
@@ -72,15 +81,4 @@ while cap.isOpened():
     else:
         current_stable_gesture = "None"
 
-    # --- תצוגת UI מינימליסטית ---
-    mode_text = "STANDING" if last_executed_action == 1 else "SITTING"
-    status_color = (0, 255, 0) if last_executed_action == 1 else (0, 0, 255)
-    
-    cv2.putText(img, f"RIGHT HAND: {right_hand_status}", (20, 50), 1, 1.5, (255, 255, 255), 2)
-    cv2.putText(img, f"ROBOT MODE: {mode_text}", (20, 100), 1, 2, status_color, 3)
-
-    cv2.imshow("XGO Right Hand Only", img)
-    if cv2.waitKey(1) & 0xFF == ord('q'): break
-
-cap.release()
-cv2.destroyAllWindows()
+    #
