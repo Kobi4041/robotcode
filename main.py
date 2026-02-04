@@ -1,106 +1,78 @@
 import cv2
 import mediapipe as mp
-import time
-import math
-from xgolib import XGO
 from gestures import count_fingers, get_combo_action
 
-# --- אתחול הרובוט ---
+# --- ניסיון חיבור לרובוט או מצב סימולציה ---
 try:
+    from xgolib import XGO
     robot = XGO(port='/dev/ttyAMA0')
-    robot.translation(0, 0, 0) # איפוס לעמידה
-    print("SUCCESS: Robot Connected")
-except Exception as e:
-    print(f"SIMULATION MODE: Robot not connected ({e})")
-    robot = None
+    IS_SIM = False
+except (ImportError, ModuleNotFoundError):
+    IS_SIM = True
+    class XGO_Mock:
+        def action(self, cmd_id): print(f"ACTION: {cmd_id}")
+        def stop(self): pass
+    robot = XGO_Mock()
 
-# --- הגדרות MediaPipe ---
+# --- הגדרות תצוגה ---
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+TEXT_COLOR = (255, 255, 255)
+SHADOW_COLOR = (0, 0, 0)
+
+cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
 mp_draw = mp.solutions.drawing_utils
 
-# --- משתני שליטה ---
 last_final_cmd = ""
-gesture_start_time = 0
-current_detected = "READY"
-required_duration = 1.0  # שנייה אחת לאישור פקודה
-
-cap = cv2.VideoCapture(0)
 
 while cap.isOpened():
     success, img = cap.read()
     if not success: break
-    
+
     img = cv2.flip(img, 1)
     h, w, _ = img.shape
     results = hands.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     
-    current_gestures = {"Left": "None", "Right": "None"}
-    
+    current_ui = {"Left": "None", "Right": "None"}
+
     if results.multi_hand_landmarks:
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
             label = results.multi_handedness[i].classification[0].label
-            # קריאה לפונקציית זיהוי האצבעות מהקובץ השני
+            # קבלת הפלט של היד הבודדת
             gesture = count_fingers(hand_lms, label)
-            current_gestures[label] = gesture
+            current_ui[label] = gesture
+            
+            # ציור שלד היד בצורה עדינה
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # קביעת הפקודה המשולבת (Logic מתוך gestures.py)
-    detected_cmd = get_combo_action(current_gestures["Left"], current_gestures["Right"])
+    # קבלת הפלט המשולב או תנועה בתזוזה
+    final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
-    # --- מנגנון יציבות וביצוע ---
-    if detected_cmd != "READY":
-        if detected_cmd == current_detected:
-            elapsed = time.time() - gesture_start_time
-            
-            # ויזואליזציה של מד טעינה
-            progress = min(elapsed / required_duration, 1.0)
-            cv2.rectangle(img, (w//2-100, h-60), (w//2-100 + int(200*progress), h-40), (0, 255, 0), -1)
-            cv2.rectangle(img, (w//2-100, h-60), (w//2+100, h-40), (255, 255, 255), 2)
-            
-            if elapsed >= required_duration and detected_cmd != last_final_cmd:
-                print(f">>> Executing: {detected_cmd}")
-                if robot:
-                    if detected_cmd == "LIE DOWN":
-                        robot.translation(0, 0, -60) # שכיבה סטטית
-                        
-                    elif detected_cmd == "ATTENTION":
-                        robot.translation(0, 0, 0)   # עמידה סטטית
-                        robot.action(1)
-                        
-                    elif detected_cmd == "FOLLOW":
-                        robot.move(0.4, 0)           # הליכה קדימה
-                        
-                    elif detected_cmd == "SPINNING":
-                        robot.turn(60)               # סיבוב במקום
-                
-                last_final_cmd = detected_cmd
-        else:
-            current_detected = detected_cmd
-            gesture_start_time = time.time()
-    else:
-        # אם המצב הוא READY או שאין ידיים - עוצרים תנועה ומאפסים
-        if last_final_cmd != "READY":
-            if robot:
-                robot.stop()
-                robot.translation(0, 0, 0)
-            last_final_cmd = "READY"
-            current_detected = "READY"
-
-    # --- תצוגת UI על המסך ---
-    # רקע כהה לטקסט למעלה
-    overlay = img.copy()
-    cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
-
-    cv2.putText(img, f"L: {current_gestures['Left']}", (20, 45), 1, 1.5, (255, 255, 0), 2)
-    cv2.putText(img, f"R: {current_gestures['Right']}", (w-200, 45), 1, 1.5, (0, 255, 255), 2)
+    # --- הצגת הפלטים על המסך (Overlay) ---
     
-    # מצב פעיל
-    status_color = (0, 255, 0) if last_final_cmd != "READY" else (255, 255, 255)
-    cv2.putText(img, f"CMD: {last_final_cmd}", (w//2-80, 50), 1, 2, status_color, 3)
+    # 1. פלט יד שמאל
+    cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, SHADOW_COLOR, 4) # צל
+    cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, (255, 150, 0), 2)
+    
+    # 2. פלט יד ימין
+    cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, SHADOW_COLOR, 4) # צל
+    cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, (0, 165, 255), 2)
+    
+    # 3. פלט משולב/תנועה (מרכז תחתון)
+    cmd_text = f"TOTAL ACTION: {final_cmd}"
+    t_size = cv2.getTextSize(cmd_text, FONT, 1, 2)[0]
+    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, SHADOW_COLOR, 4) # צל
+    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, (0, 255, 0), 2)
 
-    cv2.imshow("XGO Pro Control", img)
+    # לוגיקת ביצוע פיזית
+    if final_cmd != last_final_cmd:
+        if final_cmd == "LIE DOWN": robot.translation('z',-50)
+        elif final_cmd in ["ATTENTION", "STAND"]: robot.translation('z',0)
+        else: robot.stop()
+        last_final_cmd = final_cmd
+
+    cv2.imshow("XGO Output Monitor", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
