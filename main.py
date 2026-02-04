@@ -8,6 +8,12 @@ try:
     from xgolib import XGO
     robot = XGO(port='/dev/ttyAMA0')
     IS_SIM = False
+    
+    # --- הפקודה שגורמת לו לעמוד מיד בהפעלה ---
+    time.sleep(0.5) # השהיה קטנה לסנכרון החיבור
+    robot.action(1) 
+    print(">>> Robot initialized and Standing Up")
+    
 except (ImportError, ModuleNotFoundError):
     IS_SIM = True
     class XGO_Mock:
@@ -78,26 +84,8 @@ while cap.isOpened():
             robot.action(13)
         elif final_cmd == "ATTENTION": 
             robot.action(1)
-        # שים לב: אנחנו לא קוראים ל-stop() סתם כך כדי לא להרוס את הקימה
         last_final_cmd = final_cmd
 
     # --- תצוגת UI נקייה ---
-    # פלט ידיים בפינות
     cv2.putText(img, f"L: {current_ui['Left']}", (20, 50), 1, 1.5, (255, 150, 0), 2)
-    cv2.putText(img, f"R: {current_ui['Right']}", (w-220, 50), 1, 1.5, (0, 165, 255), 2)
-    
-    # סטטוס מרכזי
-    if is_locked:
-        msg = f"EXECUTING: {final_cmd}"
-        color = (0, 255, 0)
-    else:
-        msg = f"WAITING: {detected_cmd}"
-        color = (255, 255, 255)
-    
-    cv2.putText(img, msg, (w//2-150, h-40), 1, 1.8, color, 2)
-
-    cv2.imshow("XGO Master Control", img)
-    if cv2.waitKey(1) & 0xFF == ord('q'): break
-
-cap.release()
-cv2.destroyAllWindows()
+    cv2.putText(img, f"R: {current_ui['Right']}", (w-220,
