@@ -4,6 +4,17 @@ import time
 # היסטוריית תנועה לזיהוי מחוות דינמיות
 finger_history = []
 come_here_history = []
+def detect_wave(hand_lms):
+    global wave_history
+    # שומרים את מיקום מרכז כף היד (ציר X)
+    pos_x = hand_lms.landmark[9].x 
+    wave_history.append(pos_x)
+    if len(wave_history) > 15: wave_history.pop(0)
+    if len(wave_history) < 15: return False
+    
+    # בודקים את הטווח שהיד עברה - אם היא זזה מספיק מצד לצד
+    diff = max(wave_history) - min(wave_history)
+    return diff > 0.12  # רגישות הנפנוף
 
 def detect_circle(hand_lms):
     global finger_history
@@ -57,9 +68,10 @@ def get_combo_action(left_gesture, right_gesture):
     if left_gesture == "STAND" and right_gesture == "STAND": 
         return "ATTENTION"
     
-    # --- 2. עדיפות שנייה: מחוות דינמיות ביד ימין ---
+    # --- 2. עדיפות שנייה: מחוות דינמיות ביד ימין       ---
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
+    if right_gesture == "WAVE": return "HELLO" 
     
     # --- 3. ברירת מחדל ---
     return "READY"
