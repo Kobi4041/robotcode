@@ -3,82 +3,67 @@ import mediapipe as mp
 import time
 from gestures import count_fingers
 
-# --- אתחול רובוט ---
+# --- אתחול עם ריסט עמוק ---
+print(">>> Starting Reset Sequence...")
+robot = None
 try:
     from xgolib import XGO
-    robot = XGO(port='/dev/ttyAMA0')
-    IS_SIM = False
+    robot = XGO(port='/dev/ttyAMA0') 
+    time.sleep(1.0)
     
-    print(">>> Initializing Connection...")
-    # המתנה ארוכה יותר כדי לוודא שהרובוט "התעורר"
-    time.sleep(2.0) 
+    # ריסט תוכנתי לרובוט
+    robot.reset() 
+    print(">>> Robot Reset Command Sent!")
+    time.sleep(1.0)
     
-    # פקודת עמידה כפולה כדי לוודא שהוא קם ב-100%
-    robot.action(1) 
-    time.sleep(0.5)
-    robot.action(1)
-    
-    print(">>> Robot should be STANDING and Ready")
-except (ImportError, ModuleNotFoundError):
-    IS_SIM = True
-    class XGO_Mock:
-        def action(self, cmd_id): print(f"ACTION SENT: {cmd_id}")
-    robot = XGO_Mock()
-    print(">>> Running in Simulation Mode")
+except Exception as e:
+    print(f">>> Could not reset robot: {e}")
 
-# --- משתני שליטה ---
-last_executed_action = 1  # מתחילים במצב עמידה (1)
-required_duration = 1.0   # זמן אישור של שנייה אחת
-gesture_start_time = 0
-current_stable_gesture = "None"
-
+# --- פתיחת מצלמה ---
 cap = cv2.VideoCapture(0)
+# הגדרת רזולוציה נמוכה יותר כדי למנוע תקיעה ב-Pi
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
+hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mp_draw = mp.solutions.drawing_utils
+
+last_action = 1 # 1=עמידה, 13=שכיבה
 
 while cap.isOpened():
     success, img = cap.read()
-    if not success: break
+    if not success:
+        print(">>> Camera Error")
+        break
+        
     img = cv2.flip(img, 1)
-    h, w, _ = img.shape
     results = hands.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     
-    right_hand_status = "None"
-
+    gesture = "None"
     if results.multi_hand_landmarks:
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
-            label = results.multi_handedness[i].classification[0].label
-            
-            # מתמקדים רק ביד ימין
-            if label == "Right":
-                right_hand_status = count_fingers(hand_lms, "Right")
+            if results.multi_handedness[i].classification[0].label == "Right":
+                gesture = count_fingers(hand_lms, "Right")
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
-                break
 
-    # תרגום ה-Gesture לפעולה (Action 13 לשכיבה, Action 1 לעמידה)
-    target_action = None
-    if right_hand_status == "SIT": 
-        target_action = 13
-    elif right_hand_status == "STAND": 
-        target_action = 1
+    # ביצוע פקודות
+    if robot:
+        if gesture == "SIT" and last_action != 13:
+            robot.action(13)
+            last_action = 13
+            print(">>> Action: Sitting")
+        elif gesture == "STAND" and last_action != 1:
+            robot.action(1)
+            last_action = 1
+            print(">>> Action: Standing")
 
-    # --- לוגיקת אישור ונעילה ---
-    if target_action is not None:
-        if target_action == current_stable_gesture:
-            elapsed = time.time() - gesture_start_time
-            
-            # מד טעינה ויזואלי
-            progress = min(elapsed / required_duration, 1.0)
-            cv2.rectangle(img, (20, h-50), (int(20 + (w-40)*progress), h-30), (0, 255, 0), -1)
-            
-            if elapsed >= required_duration and target_action != last_executed_action:
-                robot.action(target_action)
-                last_executed_action = target_action
-        else:
-            current_stable_gesture = target_action
-            gesture_start_time = time.time()
-    else:
-        current_stable_gesture = "None"
+    # תצוגה
+    cv2.putText(img, f"Right Hand: {gesture}", (10, 30), 1, 1.5, (0, 255, 0), 2)
+    cv2.imshow("XGO Reset Mode", img)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-    #
+cap.release()
+cv2.destroyAllWindows()
