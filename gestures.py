@@ -1,67 +1,95 @@
-import math
+import cv2
+import mediapipe as mp
+import time
+from xgolib import XGO
+from gestures import count_fingers, get_combo_action
 
-# היסטוריית תנועה
-finger_history = []
-come_here_history = []
+# --- אתחול הרובוט ---
+try:
+    robot = XGO(port='/dev/ttyAMA0')
+    robot.translation(0, 0, 0) # עמידה התחלתית
+    print("Robot Connected")
+except:
+    print("Robot not found - Running in Simulation Mode")
+    robot = None
 
-def detect_circle(hand_lms):
-    global finger_history
-    pos = (hand_lms.landmark[8].x, hand_lms.landmark[8].y)
-    finger_history.append(pos)
-    if len(finger_history) > 10: finger_history.pop(0)
-    if len(finger_history) < 10: return False
-    min_x = min([p[0] for p in finger_history]); max_x = max([p[0] for p in finger_history])
-    min_y = min([p[1] for p in finger_history]); max_y = max([p[1] for p in finger_history])
-    return (max_x - min_x) > 0.05 and (max_y - min_y) > 0.05
+# --- הגדרות ויזואליזציה ---
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
+mp_draw = mp.solutions.drawing_utils
 
-def detect_come_here(total_fingers):
-    global come_here_history
-    come_here_history.append(total_fingers)
-    if len(come_here_history) > 20: come_here_history.pop(0)
-    return max(come_here_history) >= 4 and min(come_here_history) <= 1
+# --- משתני שליטה ---
+last_final_cmd = ""
+gesture_start_time = 0
+current_detected = "READY"
+required_duration = 1.0  # שנייה אחת לאישור פקודה
 
-def count_fingers(hand_lms, hand_type):
-    if not hand_lms: return "None"
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    success, img = cap.read()
+    if not success: break
     
-    fingers = []
-    thumb_tip = hand_lms.landmark[4]
-    pinky_base = hand_lms.landmark[17]
-    dist = math.sqrt((thumb_tip.x - pinky_base.x)**2 + (thumb_tip.y - pinky_base.y)**2)
-    fingers.append(1 if dist > 0.18 else 0)
+    img = cv2.flip(img, 1)
+    h, w, _ = img.shape
+    results = hands.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    
+    current_gestures = {"Left": "None", "Right": "None"}
+    
+    if results.multi_hand_landmarks:
+        for i, hand_lms in enumerate(results.multi_hand_landmarks):
+            label = results.multi_handedness[i].classification[0].label
+            gesture = count_fingers(hand_lms, label)
+            current_gestures[label] = gesture
+            
+            # ציור נקודות יד
+            mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    for tip in [8, 12, 16, 20]:
-        fingers.append(1 if hand_lms.landmark[tip].y < hand_lms.landmark[tip-2].y else 0)
-    
-    total = fingers.count(1)
+    # שליפת הפעולה המשולבת (לפי ה-logic של gestures.py)
+    detected_cmd = get_combo_action(current_gestures["Left"], current_gestures["Right"])
 
-    if hand_type == "Right":
-        if detect_come_here(total): return "COME"
-        if fingers[1] == 1 and total <= 2:
-            if detect_circle(hand_lms): return "SPIN"
+    # --- מנגנון יציבות (ספירה של שנייה אחת) ---
+    if detected_cmd in ["LIE DOWN", "ATTENTION"]:
+        if detected_cmd == current_detected:
+            elapsed = time.time() - gesture_start_time
+            # ויזואליזציה של מד טעינה
+            progress = min(elapsed / required_duration, 1.0)
+            cv2.rectangle(img, (w//2-100, h-60), (w//2-100 + int(200*progress), h-40), (0, 255, 0), -1)
+            cv2.rectangle(img, (w//2-100, h-60), (w//2+100, h-40), (255, 255, 255), 2)
+            
+            if elapsed >= required_duration and detected_cmd != last_final_cmd:
+                # --- ביצוע פעולה סטטית ---
+                if robot:
+                    if detected_cmd == "LIE DOWN":
+                        robot.translation(0, 0, -60) # שכיבה סטטית
+                    elif detected_cmd == "ATTENTION":
+                        robot.translation(0, 0, 0)   # עמידה סטטית
+                        robot.action(1)              # יישור רגליים
+                
+                last_final_cmd = detected_cmd
+                print(f"EXECUTED: {detected_cmd}")
+        else:
+            current_detected = detected_cmd
+            gesture_start_time = time.time()
+    else:
+        current_detected = "READY"
 
-    if total == 0: return "SIT"
-    if total == 5: return "STAND"
-    
-    return "READY"
+    # --- ויזואליזציה (UI) ---
+    # רקע שקוף לטקסט
+    overlay = img.copy()
+    cv2.rectangle(overlay, (0, 0), (w, 80), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
 
-def get_combo_action(left_gesture, right_gesture):
-    # --- 1. בדיקת שילובים כפולים (עדיפות עליונה) ---
-    if left_gesture == "SIT" and right_gesture == "SIT": 
-        return "LIE DOWN"
+    # הצגת המצב הנוכחי של הידיים
+    cv2.putText(img, f"LEFT: {current_gestures['Left']}", (20, 35), 1, 1.5, (255, 255, 0), 2)
+    cv2.putText(img, f"RIGHT: {current_gestures['Right']}", (w-250, 35), 1, 1.5, (255, 255, 0), 2)
     
-    if left_gesture == "STAND" and right_gesture == "STAND": 
-        return "ATTENTION"
-    
-    # --- 2. בדיקת מחוות תנועה בודדות (עדיפות שנייה) ---
-    if right_gesture == "COME": return "FOLLOW"
-    if right_gesture == "SPIN": return "SPINNING"
-    
-    # --- 3. בדיקה אם יש יד אחת שעושה משהו אחר ---
-    for g in [right_gesture, left_gesture]:
-        if g not in ["None", "READY", "UNKNOWN"]: return g
-    
-    # --- 4. ברירת מחדל ---
-    if left_gesture == "None" and right_gesture == "None":
-        return "IDLE"
-        
-    return "READY"
+    # הצגת הפקודה שנבחרה
+    color = (0, 255, 0) if last_final_cmd == detected_cmd else (255, 255, 255)
+    cv2.putText(img, f"MODE: {last_final_cmd}", (w//2-100, 70), 1, 1.8, color, 3)
+
+    cv2.imshow("XGO Static Control", img)
+    if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+cap.release()
+cv2.destroyAllWindows()
