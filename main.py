@@ -57,6 +57,7 @@ while cap.isOpened():
     raw_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
     # 2. לוגיקת יציבות - פועלת רק אם הרובוט לא באמצע פעולה מוגנת
+    # 2. לוגיקת יציבות - פועלת רק אם הרובוט לא באמצע פעולה מוגנת
     if not is_busy:
         if raw_cmd == "READY":
             confirmed_cmd = "READY"
@@ -64,14 +65,24 @@ while cap.isOpened():
             progress = 0
         elif raw_cmd == current_stable_candidate:
             elapsed = time.time() - gesture_start_time
-            progress = min(elapsed / REQUIRED_DURATION, 1.0)
-            if elapsed >= REQUIRED_DURATION:
+            
+            # --- עדכון: זמן אישור דינמי ---
+            # אם הפקודה היא FOLLOW, נדרוש 2.0 שניות. לכל השאר נשאר עם 1.0 (REQUIRED_DURATION)
+            dynamic_required = 2.0 if raw_cmd == "FOLLOW" else REQUIRED_DURATION
+            
+            progress = min(elapsed / dynamic_required, 1.0)
+            
+            if elapsed >= dynamic_required:
                 confirmed_cmd = raw_cmd
         else:
+            # המחווה השתנתה - מאפסים שעון
             current_stable_candidate = raw_cmd
             gesture_start_time = time.time()
             progress = 0
-            if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
+            
+            # אם היינו ב-FOLLOW והיד השתנתה אפילו קצת - עוצרים מיד לבטיחות
+            if confirmed_cmd == "FOLLOW": 
+                confirmed_cmd = "READY"
     else:
         progress = 1.0 # הרובוט עסוק, לא מחפשים מועמדים חדשים
 
