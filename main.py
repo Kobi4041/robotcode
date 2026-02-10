@@ -13,11 +13,9 @@ except (ImportError, ModuleNotFoundError):
     class XGO_Mock:
         def action(self, cmd_id): print(f"[SIM] ACTION: {cmd_id}")
         def stop(self): print("[SIM] STOP")
-        # עדכון ה-Mock לפי התיעוד החדש
         def move(self, direction, step): print(f"[SIM] MOVE: {direction} by {step}mm")
         def turn(self, speed): print(f"[SIM] TURN: {speed} degrees/s")
         def translation(self, axis, value): print(f"[SIM] TRANSLATION: {axis} to {value}")
-
     robot = XGO_Mock()
 
 # --- הגדרות תצוגה ---
@@ -25,12 +23,17 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 TEXT_COLOR = (255, 255, 255)
 SHADOW_COLOR = (0, 0, 0)
 
+# --- משתני יציבות (הוספה חדשה) ---
+REQUIRED_DURATION = 1.0  # כמה זמן (בשניות) להחזיק את המחווה
+gesture_start_time = 0
+current_stable_candidate = "READY"
+confirmed_cmd = "READY"
+last_final_cmd = ""
+
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
 mp_draw = mp.solutions.drawing_utils
-
-last_final_cmd = ""
 
 while cap.isOpened():
     success, img = cap.read()
@@ -49,7 +52,25 @@ while cap.isOpened():
             current_ui[label] = gesture
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
+    # 1. זיהוי הפקודה הגולמית מהמצלמה
+    raw_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
+
+    # 2. לוגיקת יציבות (מניעת רגישות יתר)
+    if raw_cmd == "READY":
+        confirmed_cmd = "READY"
+        current_stable_candidate = "READY"
+        progress = 0
+    elif raw_cmd == current_stable_candidate:
+        elapsed = time.time() - gesture_start_time
+        progress = min(elapsed / REQUIRED_DURATION, 1.0)
+        if elapsed >= REQUIRED_DURATION:
+            confirmed_cmd = raw_cmd
+    else:
+        current_stable_candidate = raw_cmd
+        gesture_start_time = time.time()
+        progress = 0
+        # שומרים על הפקודה האחרונה עד שהחדשה תאושר (אלא אם זה FOLLOW, שם נרצה עצירה מהירה)
+        if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
 
     # --- הצגת הפלטים על המסך ---
     cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, SHADOW_COLOR, 4)
@@ -57,50 +78,54 @@ while cap.isOpened():
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, SHADOW_COLOR, 4)
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, (0, 165, 255), 2)
     
-    cmd_text = f"TOTAL ACTION: {final_cmd}"
+    # הצגת "פס טעינה" ויזואלי למחווה
+    if progress > 0 and progress < 1:
+        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 + 100, h-70), (50, 50, 50), -1)
+        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 - 100 + int(200 * progress), h-70), (0, 255, 255), -1)
+
+    cmd_text = f"ACTION: {confirmed_cmd}"
     t_size = cv2.getTextSize(cmd_text, FONT, 1, 2)[0]
-    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, SHADOW_COLOR, 4)
-    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, (0, 255, 0), 2)
+    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-30), FONT, 1, SHADOW_COLOR, 4)
+    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-30), FONT, 1, (0, 255, 0), 2)
 
     # --- ביצוע פקודות רובוט ---
     if robot:
-        if final_cmd == "FOLLOW":
-            # לפי התיעוד: 'x' זה כיוון, 25 זה גודל הצעד (מ"מ)
+        if confirmed_cmd == "FOLLOW":
             robot.move('x', 25) 
             
-
-            
-        elif final_cmd != last_final_cmd:
-            if final_cmd == "LIE DOWN":
+        elif confirmed_cmd != last_final_cmd:
+            if confirmed_cmd == "LIE DOWN":
                 robot.stop() 
                 robot.translation('z', -70)
                 
-            elif final_cmd == "ATTENTION":
+            elif confirmed_cmd == "ATTENTION":
                 robot.stop()
                 robot.translation('z', 0)
                 robot.action(1)
                 
-            elif final_cmd == "HELLO":
+            elif confirmed_cmd == "HELLO":
                 robot.stop()
                 robot.action(12)
                 
-            elif final_cmd == "SPINNING":
-                # כאן אנחנו יוצרים סיבוב עצמאי בלי action מובנה
+            elif confirmed_cmd == "SPINNING":
                 print(">>> Robot: Performing a 360-degree turn...")
-                robot.stop()      # איפוס לפני תחילת סיבוב
-                robot.turn(120)   # מהירות סיבוב (120 מעלות לשנייה)
-                time.sleep(3)     # נחכה 3 שניות (120 * 3 = 360 מעלות)
-                robot.turn(0)     # פקודת עצירה לסיבוב
-                robot.stop()      # חזרה למצב יציב
+                robot.stop()
+                robot.turn(120)
+                time.sleep(3)
+                robot.turn(0)
+                robot.stop()
+                # איפוס מנגנון היציבות לאחר פעולה ארוכה
+                current_stable_candidate = "READY"
+                confirmed_cmd = "READY"
                 print(">>> Robot: Turn completed.")
 
-            elif final_cmd == "READY":
+            elif confirmed_cmd == "READY":
                 robot.stop()
                 robot.turn(0)
                 robot.translation('z', 0)
                 print(">>> Robot: Stopped.")
 
-    last_final_cmd = final_cmd
+    last_final_cmd = confirmed_cmd
 
     cv2.imshow("XGO Output Monitor", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
