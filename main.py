@@ -131,7 +131,7 @@ while cap.isOpened():
                 is_busy = True
                 print(">>> Robot: Waving (Protected)...")
                 robot.stop()
-                robot.action(12)
+                robot.action(13)
                 time.sleep(4) # מחכה שכל ה-Wave יסתיים
                 is_busy = False
                 
@@ -159,3 +159,4 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
