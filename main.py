@@ -25,12 +25,12 @@ SHADOW_COLOR = (0, 0, 0)
 
 # --- משתני יציבות ונעילה ---
 REQUIRED_DURATION = 1.0  # זמן אישור לפעולות רגילות
-FOLLOW_DURATION = 2.0    # זמן אישור ארוך יותר להליכה (למניעת קפיצות)
+FOLLOW_DURATION = 2.0    # זמן אישור ארוך יותר להליכה
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
-is_busy = False          # נועל את הרובוט בזמן ביצוע פעולה מוגנת
+is_busy = False          
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
@@ -54,10 +54,10 @@ while cap.isOpened():
             current_ui[label] = gesture
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי הפקודה הגולמית מהמצלמה
+    # 1. זיהוי הפקודה הגולמית
     raw_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
-    # 2. לוגיקת יציבות (פועלת רק אם הרובוט לא באמצע פעולה מוגנת)
+    # 2. לוגיקת יציבות
     if not is_busy:
         if raw_cmd == "READY":
             confirmed_cmd = "READY"
@@ -65,20 +65,19 @@ while cap.isOpened():
             progress = 0
         elif raw_cmd == current_stable_candidate:
             elapsed = time.time() - gesture_start_time
-            
-            # קביעת זמן האישור לפי סוג הפעולה
             needed = FOLLOW_DURATION if raw_cmd == "FOLLOW" else REQUIRED_DURATION
             progress = min(elapsed / needed, 1.0)
-            
             if elapsed >= needed:
                 confirmed_cmd = raw_cmd
         else:
             current_stable_candidate = raw_cmd
             gesture_start_time = time.time()
             progress = 0
-            # בטיחות: אם היד השתנתה בזמן הליכה, עוצרים את הסטטוס מיד
             if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
     else:
+        # --- התיקון למניעת טעינת פעולה בזמן עסוק ---
+        gesture_start_time = time.time() # איפוס השעון כל עוד הרובוט עסוק
+        current_stable_candidate = "READY"
         progress = 1.0
 
     # --- הצגת הפלטים על המסך ---
@@ -104,11 +103,10 @@ while cap.isOpened():
     # --- ביצוע פקודות רובוט ---
     if robot and not is_busy:
         if confirmed_cmd == "FOLLOW":
-            # תיקון קריטי ל-COME: זז רק אם גם ה-raw_cmd עדיין תקין
             if raw_cmd == "FOLLOW":
-                robot.move('x', 15) # מהירות יציבה יותר
+                robot.move('x', 15)
             else:
-                robot.move('x', 0)  # עצירה אקטיבית אם היד זזה
+                robot.move('x', 0)
             
         elif confirmed_cmd != last_final_cmd:
             if confirmed_cmd == "LIE DOWN":
@@ -117,6 +115,7 @@ while cap.isOpened():
                 robot.translation('z', -70)
                 time.sleep(1.5)
                 is_busy = False
+                confirmed_cmd = "READY"
                 
             elif confirmed_cmd == "ATTENTION":
                 is_busy = True
@@ -125,6 +124,7 @@ while cap.isOpened():
                 robot.action(1)
                 time.sleep(2)
                 is_busy = False
+                confirmed_cmd = "READY"
                 
             elif confirmed_cmd == "HELLO":
                 is_busy = True
@@ -132,6 +132,7 @@ while cap.isOpened():
                 robot.action(12)
                 time.sleep(4) 
                 is_busy = False
+                confirmed_cmd = "READY"
                 
             elif confirmed_cmd == "SPINNING":
                 is_busy = True
@@ -141,14 +142,16 @@ while cap.isOpened():
                 robot.turn(0)
                 robot.stop()
                 is_busy = False
-                current_stable_candidate = "READY"
                 confirmed_cmd = "READY"
 
             elif confirmed_cmd == "READY":
+                # --- התיקון למצב READY זקוף וגבוה ---
                 robot.stop()
                 robot.turn(0)
                 robot.translation('z', 0)
                 robot.move('x', 0)
+                if last_final_cmd != "READY":
+                    robot.action(1) # פקודת עמידה זקופה
 
     last_final_cmd = confirmed_cmd
     cv2.imshow("XGO Output Monitor", img)
