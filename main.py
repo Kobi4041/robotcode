@@ -23,8 +23,8 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 TEXT_COLOR = (255, 255, 255)
 SHADOW_COLOR = (0, 0, 0)
 
-# --- משתני יציבות ---
-REQUIRED_DURATION = 1.0  
+# --- משתני יציבות (זמן אישור) ---
+REQUIRED_DURATION = 1.0  # שניה אחת לאישור פעולה
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
@@ -52,17 +52,22 @@ while cap.isOpened():
             current_ui[label] = gesture
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי הפקודה הגולמית
+    # 1. זיהוי הפקודה הגולמית מהמצלמה
     raw_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
-    # 2. לוגיקת יציבות
+    # 2. לוגיקת יציבות (מנגנון ה-1.0 שניה)
     if raw_cmd == "READY":
         confirmed_cmd = "READY"
         current_stable_candidate = "READY"
+        gesture_start_time = 0
         progress = 0
     elif raw_cmd == current_stable_candidate:
+        if gesture_start_time == 0:
+            gesture_start_time = time.time()
+        
         elapsed = time.time() - gesture_start_time
         progress = min(elapsed / REQUIRED_DURATION, 1.0)
+        
         if elapsed >= REQUIRED_DURATION:
             confirmed_cmd = raw_cmd
     else:
@@ -71,10 +76,15 @@ while cap.isOpened():
         progress = 0
         if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
 
-    # --- הצגת פלטים ---
+    # --- הצגת פלטים על המסך ---
     cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, (255, 150, 0), 2)
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, (0, 165, 255), 2)
     
+    # פס טעינה ויזואלי לשניה אחת
+    if progress > 0 and progress < 1:
+        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 + 100, h-70), (50, 50, 50), -1)
+        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 - 100 + int(200 * progress), h-70), (0, 255, 255), -1)
+
     cmd_text = f"ACTION: {confirmed_cmd}"
     cv2.putText(img, cmd_text, (w//2-100, h-30), FONT, 1, (0, 255, 0), 2)
 
@@ -106,15 +116,13 @@ while cap.isOpened():
                 confirmed_cmd = "READY"
 
             elif confirmed_cmd == "READY":
-                # השינוי כאן: לא רק עוצרים, אלא דוחפים את הרובוט למצב זקוף
+                # עמידה זקופה במצב המתנה
                 robot.stop()
                 robot.turn(0)
                 robot.translation('z', 0)
-                robot.action(1) # פקודה 1 היא Attention - עמידה זקופה ובסיסית
-                print(">>> Robot: Standing Tall (Ready Mode)")
+                robot.action(1) 
 
     last_final_cmd = confirmed_cmd
-
     cv2.imshow("XGO Output Monitor", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
