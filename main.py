@@ -94,11 +94,11 @@ while cap.isOpened():
             robot.move('x', 25) 
             
         elif confirmed_cmd != last_final_cmd:
-            if confirmed_cmd == "LIE DOWN":
+            if confirmed_cmd == "SIT":
                 robot.stop() 
                 robot.translation('z', -70)
                 
-            elif confirmed_cmd == "ATTENTION":
+            elif confirmed_cmd == "STAND":
                 robot.stop()
                 robot.translation('z', 0)
                 robot.action(1)
@@ -110,7 +110,7 @@ while cap.isOpened():
             elif confirmed_cmd == "SPINNING":
                 robot.stop()
                 robot.turn(120)
-                time.sleep(4)
+                time.sleep(4.2)
                 robot.turn(0)
                 robot.stop()
                 confirmed_cmd = "READY"
