@@ -10,8 +10,13 @@ try:
 except (ImportError, ModuleNotFoundError):
     IS_SIM = True
     class XGO_Mock:
-        def action(self, cmd_id): print(f"ACTION: {cmd_id}")
-        def stop(self): pass
+        def action(self, cmd_id): print(f"[SIM] ACTION: {cmd_id}")
+        def stop(self): print("[SIM] STOP")
+        # עדכון ה-Mock לפי התיעוד החדש
+        def move(self, direction, step): print(f"[SIM] MOVE: {direction} by {step}mm")
+        def turn(self, speed): print(f"[SIM] TURN: {speed} degrees/s")
+        def translation(self, axis, value): print(f"[SIM] TRANSLATION: {axis} to {value}")
+
     robot = XGO_Mock()
 
 # --- הגדרות תצוגה ---
@@ -39,39 +44,55 @@ while cap.isOpened():
     if results.multi_hand_landmarks:
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
             label = results.multi_handedness[i].classification[0].label
-            # קבלת הפלט של היד הבודדת
             gesture = count_fingers(hand_lms, label)
             current_ui[label] = gesture
-            
-            # ציור שלד היד בצורה עדינה
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # קבלת הפלט המשולב או תנועה בתזוזה
     final_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
-    # --- הצגת הפלטים על המסך (Overlay) ---
-    
-    # 1. פלט יד שמאל
-    cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, SHADOW_COLOR, 4) # צל
+    # --- הצגת הפלטים על המסך ---
+    cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, SHADOW_COLOR, 4)
     cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, (255, 150, 0), 2)
-    
-    # 2. פלט יד ימין
-    cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, SHADOW_COLOR, 4) # צל
+    cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, SHADOW_COLOR, 4)
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, (0, 165, 255), 2)
     
-    # 3. פלט משולב/תנועה (מרכז תחתון)
     cmd_text = f"TOTAL ACTION: {final_cmd}"
     t_size = cv2.getTextSize(cmd_text, FONT, 1, 2)[0]
-    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, SHADOW_COLOR, 4) # צל
+    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, SHADOW_COLOR, 4)
     cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-40), FONT, 1, (0, 255, 0), 2)
 
-    # לוגיקת ביצוע פיזית
-    if final_cmd != last_final_cmd:
-        if final_cmd == "LIE DOWN": robot.translation('z',-50)
-        elif final_cmd =="ATTENTION": robot.action(1)
-        elif final_cmd =="HELLO": robot.action(13)
-        else: robot.stop()
-        last_final_cmd = final_cmd
+    # --- ביצוע פקודות רובוט ---
+    if robot:
+        if final_cmd == "FOLLOW":
+            # לפי התיעוד: 'x' זה כיוון, 25 זה גודל הצעד (מ"מ)
+            robot.move('x', 25) 
+            
+        elif final_cmd == "SPINNING":
+            # לפי התיעוד: מהירות סיבוב במעלות לשנייה
+            robot.turn(60) 
+            
+        elif final_cmd != last_final_cmd:
+            if final_cmd == "LIE DOWN":
+                robot.stop() 
+                robot.translation('z', -70)
+                
+            elif final_cmd == "ATTENTION":
+                robot.stop()
+                robot.translation('z', 0)
+                robot.action(1)
+                
+            elif final_cmd == "HELLO":
+                robot.stop()
+                robot.action(12)
+                
+            elif final_cmd == "READY":
+                robot.stop()
+                robot.translation('z', 0)
+                # כאן חשוב לשלוח 0 לסיבוב ולתנועה כדי לוודא עצירה מוחלטת
+                robot.turn(0)
+                print(">>> Robot: Stopped.")
+
+    last_final_cmd = final_cmd
 
     cv2.imshow("XGO Output Monitor", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
