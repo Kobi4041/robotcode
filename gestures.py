@@ -89,8 +89,10 @@ def count_fingers(hand_lms, hand_type):
         if detect_circle(hand_lms): return "SPIN"
 
     # --- 3. מצבים סטטיים ---
-    if total <= 1: return "SIT"
-    if total >= 4: return "STAND"
+    if total ==0: return "STOP"
+    if total == 1: return "STAND"
+    if total == 2: return "SIT"
+
     
     return "READY"
 
@@ -99,10 +101,4 @@ def get_combo_action(left_gesture, right_gesture):
     if right_gesture == "WAVE": return "HELLO"
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
-    
-    if left_gesture == "SIT" and right_gesture == "SIT": 
-        return "LIE DOWN"
-    if left_gesture == "STAND" and right_gesture == "STAND": 
-        return "ATTENTION"
-    
     return "READY"
