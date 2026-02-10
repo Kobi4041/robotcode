@@ -102,7 +102,6 @@ while cap.isOpened():
             
             if confirmed_cmd == "STOP":
                 robot.stop()
-                robot.action(10) # שכיבה (LIE DOWN) כפעולת עצירה
                 print(">>> Robot STOPPED (0 Fingers)")
 
             elif confirmed_cmd == "SIT":
@@ -112,8 +111,9 @@ while cap.isOpened():
                 
             elif confirmed_cmd == "ATTENTION":
                 robot.stop()
+                robot.turn(0)
                 robot.translation('z', 0)
-                robot.action(1)  # עמידה זקופה (1 אצבע)
+                robot.action(1) 
                 print(">>> Robot STAND (1 Finger)")
                 
             elif confirmed_cmd == "HELLO":
