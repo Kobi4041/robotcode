@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 from gestures import count_fingers, get_combo_action
+import time
 
 # --- ניסיון חיבור לרובוט או מצב סימולציה ---
 try:
@@ -67,9 +68,7 @@ while cap.isOpened():
             # לפי התיעוד: 'x' זה כיוון, 25 זה גודל הצעד (מ"מ)
             robot.move('x', 25) 
             
-        elif final_cmd == "SPINNING":
-            # לפי התיעוד: מהירות סיבוב במעלות לשנייה
-            robot.turn(60) 
+
             
         elif final_cmd != last_final_cmd:
             if final_cmd == "LIE DOWN":
@@ -85,11 +84,20 @@ while cap.isOpened():
                 robot.stop()
                 robot.action(12)
                 
+            elif final_cmd == "SPINNING":
+                # כאן אנחנו יוצרים סיבוב עצמאי בלי action מובנה
+                print(">>> Robot: Performing a 360-degree turn...")
+                robot.stop()      # איפוס לפני תחילת סיבוב
+                robot.turn(120)   # מהירות סיבוב (120 מעלות לשנייה)
+                time.sleep(3)     # נחכה 3 שניות (120 * 3 = 360 מעלות)
+                robot.turn(0)     # פקודת עצירה לסיבוב
+                robot.stop()      # חזרה למצב יציב
+                print(">>> Robot: Turn completed.")
+
             elif final_cmd == "READY":
                 robot.stop()
-                robot.translation('z', 0)
-                # כאן חשוב לשלוח 0 לסיבוב ולתנועה כדי לוודא עצירה מוחלטת
                 robot.turn(0)
+                robot.translation('z', 0)
                 print(">>> Robot: Stopped.")
 
     last_final_cmd = final_cmd
