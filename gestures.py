@@ -4,31 +4,33 @@ import time
 # --- משתני היסטוריה גלובליים ---
 finger_history = []
 wave_history = []
-last_wave_time = 0
 
 def detect_wave(hand_lms):
     global wave_history
-    # שימוש בנקודה 8 (אצבע מורה) לזיהוי נפנוף - יותר רגישה מהשורש
+    # משתמשים במיקום ה-X של קצה האצבע המורה
     pos_x = hand_lms.landmark[8].x 
     wave_history.append(pos_x)
     
-    if len(wave_history) > 15: wave_history.pop(0)
-    if len(wave_history) < 15: return False
+    # הגדלנו את ההיסטוריה ל-25 פריימים כדי לקלוט תנועה ארוכה יותר
+    if len(wave_history) > 25: wave_history.pop(0)
+    if len(wave_history) < 25: return False
     
-    # חישוב טווח התנועה
+    # 1. בדיקת טווח תנועה מינימלי (לוודא שהיד לא סתם רועדת במקום)
     diff = max(wave_history) - min(wave_history)
     
-    # בדיקת "תנודתיות" - אנחנו סופרים כמה פעמים התנועה שינתה כיוון
+    # 2. ספירת שינויי כיוון (הלב של ה-Wave)
     direction_changes = 0
-    for i in range(1, len(wave_history) - 1):
-        prev = wave_history[i-1]
+    # נשתמש בסינון רעשים קטן (threshold) כדי לא לספור כל רעידה כשינוי כיוון
+    for i in range(2, len(wave_history) - 2):
+        prev_avg = (wave_history[i-1] + wave_history[i-2]) / 2
         curr = wave_history[i]
-        nxt = wave_history[i+1]
-        if (curr > prev and curr > nxt) or (curr < prev and curr < nxt):
+        next_avg = (wave_history[i+1] + wave_history[i+2]) / 2
+        
+        if (curr > prev_avg and curr > next_avg) or (curr < prev_avg and curr < next_avg):
             direction_changes += 1
             
-    # WAVE חזק: טווח תנועה מספיק ולפחות 2 שינויי כיוון (נפנוף אמיתי)
-    return diff > 0.12 and direction_changes >= 2
+    # הגדלנו את הרף: חייב לפחות 3 שינויי כיוון וטווח תנועה ברור
+    return diff > 0.15 and direction_changes >= 3
 
 def detect_circle(hand_lms):
     global finger_history
@@ -44,26 +46,24 @@ def detect_circle(hand_lms):
 def count_fingers(hand_lms, hand_type):
     if not hand_lms: return "None"
     
-    # 1. בדיקת מצב אצבעות בסיסי
+    # 1. חישוב אצבעות פתוחות
     fingers = []
-    # אגודל
     thumb_tip = hand_lms.landmark[4]
     pinky_base = hand_lms.landmark[17]
     dist = math.sqrt((thumb_tip.x - pinky_base.x)**2 + (thumb_tip.y - pinky_base.y)**2)
     fingers.append(1 if dist > 0.18 else 0)
 
-    # 4 אצבעות
     for tip in [8, 12, 16, 20]:
         fingers.append(1 if hand_lms.landmark[tip].y < hand_lms.landmark[tip-2].y else 0)
     
     total = fingers.count(1)
 
-    # 2. זיהוי WAVE מחוזק (שלום) - חייב להיות עם יד פתוחה יחסית
-    if total >= 3:
+    # 2. זיהוי WAVE (שלום) - חייב יד פתוחה ותנועה של 3 נפנופים
+    if total >= 4: # דורש לפחות 4 אצבעות פתוחות לנפנוף
         if detect_wave(hand_lms):
             return "WAVE"
 
-    # 3. זיהוי COME (בוא) - פוזיציה חכמה
+    # 3. זיהוי COME (בוא) - פוזיציה חכמה (חצי קיפול)
     wrist = hand_lms.landmark[0]
     middle_mcp = hand_lms.landmark[9]
     is_upright = middle_mcp.y < wrist.y 
@@ -74,14 +74,13 @@ def count_fingers(hand_lms, hand_type):
             tip = hand_lms.landmark[tip_idx]
             pip = hand_lms.landmark[tip_idx-2]
             mcp = hand_lms.landmark[tip_idx-3]
-            # בדיקת ה"אזור המת" של חצי קיפול
             if mcp.y > tip.y > pip.y or abs(tip.y - pip.y) < 0.04:
                 half_curled_count += 1
         
         if half_curled_count >= 2:
             return "COME"
 
-    # 4. מחוות דינמיות אחרות
+    # 4. מחוות אחרות
     if hand_type == "Right":
         if fingers[1] == 1 and total <= 2: 
             if detect_circle(hand_lms): return "SPIN"
@@ -93,12 +92,11 @@ def count_fingers(hand_lms, hand_type):
     return "READY"
 
 def get_combo_action(left_gesture, right_gesture):
-    # עדיפות ראשונה למחוות תנועה בימין
+    # סדר עדיפויות מוחלט
     if right_gesture == "WAVE": return "HELLO"
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     
-    # עדיפות שנייה למצבים סטטיים בשתי ידיים
     if left_gesture == "SIT" and right_gesture == "SIT": 
         return "LIE DOWN"
     if left_gesture == "STAND" and right_gesture == "STAND": 
