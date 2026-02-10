@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 from gestures import count_fingers, get_combo_action
 import time
+import sys
 
 # --- אתחול רובוט ---
 try:
@@ -12,7 +13,7 @@ except:
         def action(self, cmd_id): print(f"[SIM] ACTION: {cmd_id}")
         def stop(self): print("[SIM] STOP")
         def turn(self, speed): print(f"[SIM] TURN: {speed}")
-        def move(self, dir, step): pass
+        def move(self, dir, step): print(f"[SIM] MOVE: {dir} {step}")
         def translation(self, axis, val): pass
     robot = XGO_Mock()
 
@@ -22,7 +23,7 @@ gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
-block_until = 0  # תקופת הצינון
+block_until = 0  # תקופת הצינון ל-Wave ו-Spin
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
@@ -44,10 +45,10 @@ while cap.isOpened():
                 current_ui_right = count_fingers(hand_lms, label)
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי פקודה
+    # 1. זיהוי פקודה גולמית
     raw_cmd = get_combo_action("None", current_ui_right)
 
-    # 2. ניהול צינון - חוסם רק פקודות חדשות
+    # 2. ניהול צינון - חוסם פקודות חדשות בזמן המתנה
     if curr_time < block_until:
         confirmed_cmd = "WAITING..."
     else:
@@ -61,26 +62,29 @@ while cap.isOpened():
 
     # 3. ביצוע פקודות
     if robot:
-        # פקודות עם צינון (Spin ו-Wave)
+        # א. פקודות עם צינון (ביצוע פעם אחת והמתנה)
         if confirmed_cmd in ["HELLO", "SPINNING"] and curr_time > block_until:
             if confirmed_cmd == "HELLO":
                 robot.action(13)
-                block_until = curr_time + 3.0 # זמן לביצוע הנפנוף + מנוחה
+                block_until = curr_time + 3.0 
             
             elif confirmed_cmd == "SPINNING":
                 robot.turn(120)
-                time.sleep(4.2) # כאן ה-sleep סביר כי זו פעולה חוסמת ממילא
+                time.sleep(4.2)
                 robot.turn(0)
                 robot.action(1)
-                block_until = curr_time + 1.5 # צינון אחרי הסיבוב
+                block_until = curr_time + 1.5 
             
             confirmed_cmd = "READY"
 
-        # פקודה רציפה (FOLLOW) - ללא צינון
+        # ב. פקודות רציפות (הליכה קדימה / אחורה)
         elif confirmed_cmd == "FOLLOW":
-            robot.move('x', 12)
+            robot.move('x', 12) # קדימה לאט
+            
+        elif confirmed_cmd == "REVERSE":
+            robot.move('x', -12) # אחורה לאט (שימוש בערך שלילי)
 
-        # פקודות סטטיות
+        # ג. פקודות מצב (סטטיות)
         elif confirmed_cmd != last_final_cmd and confirmed_cmd != "WAITING...":
             if confirmed_cmd == "STOP":
                 robot.stop()
@@ -93,6 +97,7 @@ while cap.isOpened():
                 robot.action(1)
             elif confirmed_cmd == "READY":
                 robot.stop()
+                robot.move('x', 0)
                 robot.translation('z', 0)
 
     last_final_cmd = confirmed_cmd
