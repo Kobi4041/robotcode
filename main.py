@@ -23,12 +23,13 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 TEXT_COLOR = (255, 255, 255)
 SHADOW_COLOR = (0, 0, 0)
 
-# --- משתני יציבות (הוספה חדשה) ---
-REQUIRED_DURATION = 1.0  # כמה זמן (בשניות) להחזיק את המחווה
+# --- משתני יציבות ונעילה (מעודכן) ---
+REQUIRED_DURATION = 1.0  
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
+is_busy = False # משתנה שנועל את הרובוט בזמן פעולה מוגנת
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
@@ -52,25 +53,27 @@ while cap.isOpened():
             current_ui[label] = gesture
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי הפקודה הגולמית מהמצלמה
+    # 1. זיהוי הפקודה הגולמית
     raw_cmd = get_combo_action(current_ui["Left"], current_ui["Right"])
 
-    # 2. לוגיקת יציבות (מניעת רגישות יתר)
-    if raw_cmd == "READY":
-        confirmed_cmd = "READY"
-        current_stable_candidate = "READY"
-        progress = 0
-    elif raw_cmd == current_stable_candidate:
-        elapsed = time.time() - gesture_start_time
-        progress = min(elapsed / REQUIRED_DURATION, 1.0)
-        if elapsed >= REQUIRED_DURATION:
-            confirmed_cmd = raw_cmd
+    # 2. לוגיקת יציבות - פועלת רק אם הרובוט לא באמצע פעולה מוגנת
+    if not is_busy:
+        if raw_cmd == "READY":
+            confirmed_cmd = "READY"
+            current_stable_candidate = "READY"
+            progress = 0
+        elif raw_cmd == current_stable_candidate:
+            elapsed = time.time() - gesture_start_time
+            progress = min(elapsed / REQUIRED_DURATION, 1.0)
+            if elapsed >= REQUIRED_DURATION:
+                confirmed_cmd = raw_cmd
+        else:
+            current_stable_candidate = raw_cmd
+            gesture_start_time = time.time()
+            progress = 0
+            if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
     else:
-        current_stable_candidate = raw_cmd
-        gesture_start_time = time.time()
-        progress = 0
-        # שומרים על הפקודה האחרונה עד שהחדשה תאושר (אלא אם זה FOLLOW, שם נרצה עצירה מהירה)
-        if confirmed_cmd == "FOLLOW": confirmed_cmd = "READY"
+        progress = 1.0 # הרובוט עסוק, לא מחפשים מועמדים חדשים
 
     # --- הצגת הפלטים על המסך ---
     cv2.putText(img, f"LEFT: {current_ui['Left']}", (20, 50), FONT, 0.8, SHADOW_COLOR, 4)
@@ -78,55 +81,68 @@ while cap.isOpened():
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, SHADOW_COLOR, 4)
     cv2.putText(img, f"RIGHT: {current_ui['Right']}", (w-250, 50), FONT, 0.8, (0, 165, 255), 2)
     
-    # הצגת "פס טעינה" ויזואלי למחווה
-    if progress > 0 and progress < 1:
-        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 + 100, h-70), (50, 50, 50), -1)
-        cv2.rectangle(img, (w//2 - 100, h-80), (w//2 - 100 + int(200 * progress), h-70), (0, 255, 255), -1)
+    if is_busy:
+        status_text = "BUSY EXECUTING..."
+        color = (0, 0, 255)
+    else:
+        status_text = f"ACTION: {confirmed_cmd}"
+        color = (0, 255, 0)
+        if progress > 0 and progress < 1:
+            cv2.rectangle(img, (w//2 - 100, h-80), (w//2 + 100, h-70), (50, 50, 50), -1)
+            cv2.rectangle(img, (w//2 - 100, h-80), (w//2 - 100 + int(200 * progress), h-70), (0, 255, 255), -1)
 
-    cmd_text = f"ACTION: {confirmed_cmd}"
-    t_size = cv2.getTextSize(cmd_text, FONT, 1, 2)[0]
-    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-30), FONT, 1, SHADOW_COLOR, 4)
-    cv2.putText(img, cmd_text, ((w-t_size[0])//2, h-30), FONT, 1, (0, 255, 0), 2)
+    t_size = cv2.getTextSize(status_text, FONT, 1, 2)[0]
+    cv2.putText(img, status_text, ((w-t_size[0])//2, h-30), FONT, 1, SHADOW_COLOR, 4)
+    cv2.putText(img, status_text, ((w-t_size[0])//2, h-30), FONT, 1, color, 2)
 
     # --- ביצוע פקודות רובוט ---
-    if robot:
+    if robot and not is_busy:
         if confirmed_cmd == "FOLLOW":
             robot.move('x', 25) 
             
         elif confirmed_cmd != last_final_cmd:
             if confirmed_cmd == "LIE DOWN":
+                is_busy = True # נעילה
                 robot.stop() 
                 robot.translation('z', -70)
+                time.sleep(1.5)
+                is_busy = False # שחרור
                 
             elif confirmed_cmd == "ATTENTION":
+                is_busy = True
                 robot.stop()
                 robot.translation('z', 0)
                 robot.action(1)
+                time.sleep(2)
+                is_busy = False
                 
             elif confirmed_cmd == "HELLO":
+                is_busy = True
+                print(">>> Robot: Waving (Protected)...")
                 robot.stop()
                 robot.action(12)
+                time.sleep(4) # מחכה שכל ה-Wave יסתיים
+                is_busy = False
                 
             elif confirmed_cmd == "SPINNING":
-                print(">>> Robot: Performing a 360-degree turn...")
+                is_busy = True
+                print(">>> Robot: Spinning 360 (Protected)...")
                 robot.stop()
                 robot.turn(120)
                 time.sleep(3)
                 robot.turn(0)
                 robot.stop()
-                # איפוס מנגנון היציבות לאחר פעולה ארוכה
+                is_busy = False
+                # איפוס מנגנון היציבות
                 current_stable_candidate = "READY"
                 confirmed_cmd = "READY"
-                print(">>> Robot: Turn completed.")
 
             elif confirmed_cmd == "READY":
                 robot.stop()
                 robot.turn(0)
                 robot.translation('z', 0)
-                print(">>> Robot: Stopped.")
 
     last_final_cmd = confirmed_cmd
-
     cv2.imshow("XGO Output Monitor", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
