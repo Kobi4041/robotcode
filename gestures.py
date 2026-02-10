@@ -4,23 +4,18 @@ import time
 # --- משתני היסטוריה גלובליים ---
 finger_history = []
 wave_history = []
+come_history = []  # היסטוריה לזיהוי תנועת בוא
 
 def detect_wave(hand_lms):
     global wave_history
-    # משתמשים במיקום ה-X של קצה האצבע המורה
     pos_x = hand_lms.landmark[8].x 
     wave_history.append(pos_x)
     
-    # הגדלנו את ההיסטוריה ל-25 פריימים כדי לקלוט תנועה ארוכה יותר
     if len(wave_history) > 25: wave_history.pop(0)
     if len(wave_history) < 25: return False
     
-    # 1. בדיקת טווח תנועה מינימלי (לוודא שהיד לא סתם רועדת במקום)
     diff = max(wave_history) - min(wave_history)
-    
-    # 2. ספירת שינויי כיוון (הלב של ה-Wave)
     direction_changes = 0
-    # נשתמש בסינון רעשים קטן (threshold) כדי לא לספור כל רעידה כשינוי כיוון
     for i in range(2, len(wave_history) - 2):
         prev_avg = (wave_history[i-1] + wave_history[i-2]) / 2
         curr = wave_history[i]
@@ -29,8 +24,23 @@ def detect_wave(hand_lms):
         if (curr > prev_avg and curr > next_avg) or (curr < prev_avg and curr < next_avg):
             direction_changes += 1
             
-    # הגדלנו את הרף: חייב לפחות 3 שינויי כיוון וטווח תנועה ברור
     return diff > 0.15 and direction_changes >= 3
+
+def detect_come_here(total_fingers):
+    """
+    מזהה תנועת 'בוא' על ידי בדיקת מעבר מיד פתוחה ליד סגורה
+    """
+    global come_history
+    come_history.append(total_fingers)
+    
+    if len(come_history) > 15: come_history.pop(0)
+    if len(come_history) < 15: return False
+
+    # מחלקים את ההיסטוריה לזמן התחלה וזמן סוף
+    start_state = max(come_history[:7]) # המקסימום בחצי הראשון (מחפשים יד פתוחה >= 4)
+    end_state = min(come_history[-7:])  # המינימום בחצי השני (מחפשים יד סגורה <= 1)
+    
+    return start_state >= 4 and end_state <= 1
 
 def detect_circle(hand_lms):
     global finger_history
@@ -58,41 +68,34 @@ def count_fingers(hand_lms, hand_type):
     
     total = fingers.count(1)
 
-    # 2. זיהוי WAVE (שלום) - חייב יד פתוחה ותנועה של 3 נפנופים
-    if total >= 4: # דורש לפחות 4 אצבעות פתוחות לנפנוף
+    # --- 2. מחוות דינמיות (סדר עדיפויות) ---
+
+    # א. בדיקת WAVE (שלום)
+    if total >= 4:
         if detect_wave(hand_lms):
             return "WAVE"
 
-    # 3. זיהוי COME (בוא) - פוזיציה חכמה (חצי קיפול)
-    wrist = hand_lms.landmark[0]
-    middle_mcp = hand_lms.landmark[9]
-    is_upright = middle_mcp.y < wrist.y 
-    
-    if hand_type == "Right" and is_upright:
-        half_curled_count = 0
-        for tip_idx in [8, 12, 16]:
-            tip = hand_lms.landmark[tip_idx]
-            pip = hand_lms.landmark[tip_idx-2]
-            mcp = hand_lms.landmark[tip_idx-3]
-            if mcp.y > tip.y > pip.y or abs(tip.y - pip.y) < 0.04:
-                half_curled_count += 1
-        
-        if half_curled_count >= 2:
-            return "COME"
-
-    # 4. מחוות אחרות
+    # ב. בדיקת COME (בוא) - השדרוג החדש
     if hand_type == "Right":
-        if fingers[1] == 1 and total <= 2: 
-            if detect_circle(hand_lms): return "SPIN"
+        # בודק אם היד זקופה יחסית כדי למנוע זיהוי מהרצפה
+        wrist = hand_lms.landmark[0]
+        middle_mcp = hand_lms.landmark[9]
+        if middle_mcp.y < wrist.y: # יד פונה למעלה
+            if detect_come_here(total):
+                return "COME"
 
-    # 5. מצבים סטטיים
+    # ג. בדיקת SPIN (סיבוב)
+    if hand_type == "Right" and fingers[1] == 1 and total <= 2: 
+        if detect_circle(hand_lms): return "SPIN"
+
+    # --- 3. מצבים סטטיים ---
     if total <= 1: return "SIT"
     if total >= 4: return "STAND"
     
     return "READY"
 
 def get_combo_action(left_gesture, right_gesture):
-    # סדר עדיפויות מוחלט
+    # סדר עדיפויות מוחלט לביצוע
     if right_gesture == "WAVE": return "HELLO"
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
