@@ -112,10 +112,13 @@ while cap.isOpened():
                 robot.stop()
                 robot.move('x', 0)
                 robot.action(1)
-            elif confirmed_cmd == "SIT":
-                robot.stop()
-                robot.translation('z', -75)
-                robot.attitude('p', 15)
+                if last_final_cmd != "SIT":
+                    robot.stop()
+                    robot.move('x', 0)
+                    robot.translation(['z', 'x'], [100, 0])
+                    robot.attitude('p', 0)
+
+            
             elif confirmed_cmd == "ATTENTION":
                 robot.translation('z', 0)
                 robot.action(1)
