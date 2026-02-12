@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 from gestures import count_fingers, get_combo_action
 import time
+import sys
 
 # --- אתחול רובוט ---
 try:
@@ -12,17 +13,22 @@ except:
         def action(self, cmd_id): print(f"[SIM] ACTION: {cmd_id}")
         def stop(self): print("[SIM] STOP")
         def turn(self, speed): print(f"[SIM] TURN: {speed}")
-        def move(self, direction, step): print(f"[SIM] MOVE: {direction} {step}")
-        def translation(self, axis, val): print(f"[SIM] TRANS: {axis} to {val}")
+        def move(self, dir, step): print(f"[SIM] MOVE: {dir} {step}")
+        def translation(self, axis, val): print(f"[SIM] TRANS: {axis} {val}")
+        def attitude(self, axis, val): print(f"[SIM] ATTITUDE: {axis} {val}")
     robot = XGO_Mock()
 
 # --- משתני שליטה ---
-REQUIRED_DURATION = 0.8 
+REQUIRED_DURATION = 0.5 
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
 block_until = 0  
+
+# משתנים לזיהוי כפול של FOLLOW
+come_here_count = 0
+last_come_time = 0
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
@@ -46,93 +52,107 @@ while cap.isOpened():
 
     # 1. זיהוי פקודה גולמית
     raw_cmd = get_combo_action("None", current_ui_right)
-    
-    # איחוד לוגי: אם חזר "LIE DOWN" מהמחוות, נתייחס אליו כ-"SIT"
-    if raw_cmd == "LIE DOWN":
-        raw_cmd = "SIT"
 
-    # 2. ניהול צינון ויציבות
+    # 2. ניהול צינון ויציבות - כאן מתבצעת החסימה
     if curr_time < block_until:
-        display_status = "BUSY..."
+        confirmed_cmd = "WAITING..."
+        # איפוס משתני זיהוי כדי שלא "יזכור" מחוות שנעשו בזמן החסימה
+        gesture_start_time = 0
+        current_stable_candidate = "READY"
     else:
-        display_status = confirmed_cmd
         if raw_cmd == current_stable_candidate:
             if gesture_start_time == 0: gesture_start_time = curr_time
             if curr_time - gesture_start_time >= REQUIRED_DURATION:
-                confirmed_cmd = raw_cmd
+                
+                # לוגיקה לזיהוי כפול של FOLLOW
+                if raw_cmd == "FOLLOW":
+                    if curr_time - last_come_time > 5.0:
+                        come_here_count = 0
+                    
+                    if last_final_cmd != "FOLLOW" and confirmed_cmd != "FOLLOW":
+                        come_here_count += 1
+                        last_come_time = curr_time
+                        print(f">>> GESTURE: COME HERE ({come_here_count}/2)")
+                        
+                        if come_here_count >= 2:
+                            confirmed_cmd = "FOLLOW"
+                            come_here_count = 0
+                        else:
+                            current_stable_candidate = "NONE"
+                            confirmed_cmd = "READY"
+                else:
+                    confirmed_cmd = raw_cmd
+                    if raw_cmd != "READY":
+                        come_here_count = 0
         else:
             current_stable_candidate = raw_cmd
             gesture_start_time = curr_time
 
-    # 3. ביצוע פקודות רובוט
-    if robot:
-        if curr_time >= block_until:
+    # 3. ביצוע פקודות
+    if robot and curr_time >= block_until:
+        
+        # א. פקודות אקשן (ארוכות)
+        if confirmed_cmd == "HELLO":
+            robot.action(13)
+            block_until = curr_time + 4.0 # חסימה ל-4 שניות
+            confirmed_cmd = "READY"
+
+        elif confirmed_cmd == "SPINNING":
+            robot.turn(120)
+            time.sleep(4)
+            robot.turn(0)
+            robot.action(1)
+            block_until = curr_time + 2.0 # חסימה לאחר הסיבוב
+            confirmed_cmd = "READY"
+
+        # ב. פקודות תנועה (מוסיפים חסימה קצרה למניעת קפיצות)
+        elif confirmed_cmd == "FOLLOW":
+            robot.move('x', 12)
+            # ב-Follow/Reverse לא נשים חסימה ארוכה כדי לאפשר עצירה
             
-            # א. פקודות אקשן חד-פעמיות
-            if confirmed_cmd == "HELLO":
-                print(">>> EVENT: HELLO ACTIVATED")
-                robot.action(13)
-                block_until = curr_time + 3.0 
-                confirmed_cmd = "READY"
+        elif confirmed_cmd == "REVERSE":
+            robot.move('x', -12)
 
-            elif confirmed_cmd == "SPINNING":
-                print(">>> EVENT: SPINNING ACTIVATED")
-                robot.turn(120)
-                block_until = curr_time + 4.2 
-                last_final_cmd = "SPIN_STARTED"
-                confirmed_cmd = "READY"
-
-            if last_final_cmd == "SPIN_STARTED" and curr_time >= block_until:
-                print(">>> SYSTEM: SPIN COMPLETED")
-                robot.turn(0)
+        # ג. פקודות מצב (סטטיות) - הוספת חסימה של 1.5 שניות לכל שינוי
+        elif confirmed_cmd != last_final_cmd and confirmed_cmd != "WAITING...":
+            if confirmed_cmd == "STOP":
                 robot.stop()
+                robot.move('x', 0)
                 robot.action(1)
-                last_final_cmd = "READY"
+                block_until = curr_time + 1.0 # חסימה לשנייה אחת
 
-            # ב. פקודות תנועה רציפה
-            if confirmed_cmd == "FOLLOW":
-                if last_final_cmd != "FOLLOW":
-                    print(">>> MOVE: FOLLOW START")
-                robot.move('x', 12)
-                
-            elif confirmed_cmd == "REVERSE":
-                if last_final_cmd != "REVERSE":
-                    print(">>> MOVE: REVERSE START")
-                robot.move('x', -12)
+            elif confirmed_cmd == "SIT":
+                print(">>> ACTION: MAX REALISTIC SIT")
+                robot.stop()
+                robot.translation(['z', 'x'], [75, -20])
+                robot.attitude('p', 15)
+                block_until = curr_time + 2.0 # חסימה ל-2 שניות עד שיתייצב
 
-            # ג. פקודות מצב (סטטיות)
-            elif confirmed_cmd != last_final_cmd:
-                if confirmed_cmd == "STOP":
-                    print(">>> ACTION: STOP")
-                    robot.stop()
-                    robot.move('x', 0)
-                    robot.action(1)
-                
-                elif confirmed_cmd == "SIT":
-                    print(">>> ACTION: SIT")
-                    robot.stop()
-                    robot.translation('z', -70) # גובה ישיבה אחיד
-                
-                elif confirmed_cmd == "ATTENTION":
-                    print(">>> ACTION: ATTENTION")
-                    robot.stop()
-                    robot.translation('z', 0)
-                    robot.action(1)
-                
-                elif confirmed_cmd == "READY":
-                    if last_final_cmd not in ["READY", ""]:
-                        print(">>> ACTION: READY (STANDBY)")
-                    robot.stop()
-                    robot.move('x', 0)
-                    robot.translation('z', 0)
-                    robot.action(1)
+            elif confirmed_cmd == "ATTENTION":
+                robot.stop()
+                robot.translation(['z', 'x'], [100, 0])
+                robot.attitude('p', 0)
+                robot.action(1)
+                block_until = curr_time + 2.0 # חסימה ל-2 שניות
 
-                last_final_cmd = confirmed_cmd
+            elif confirmed_cmd == "READY":
+                # ב-READY אנחנו לא חוסמים כדי לאפשר פקודה חדשה מיד
+                robot.stop()
+                robot.move('x', 0)
+                robot.translation(['z', 'x'], [100, 0])
+                robot.attitude('p', 0)
 
-    # תצוגה על המסך
-    color = (0, 0, 255) if curr_time < block_until else (0, 255, 0)
-    cv2.putText(img, f"CMD: {display_status}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            last_final_cmd = confirmed_cmd
+
+    # תצוגה
+    display_text = f"CMD: {confirmed_cmd}"
+    if confirmed_cmd == "WAITING...":
+        color = (0, 0, 255) # אדום בזמן חסימה
+    else:
+        color = (0, 255, 0) # ירוק כשאפשר לפעול
+        if come_here_count == 1: display_text += " (WAITING FOR 2nd)"
     
+    cv2.putText(img, display_text, (20, 50), 1, 1.5, color, 2)
     cv2.imshow("XGO Final Control", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
