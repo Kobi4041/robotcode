@@ -94,7 +94,7 @@ while cap.isOpened():
             
             elif confirmed_cmd == "SPINNING":
                 robot.turn(120)
-                time.sleep(4.2)
+                time.sleep(4)
                 robot.turn(0)
                 robot.action(1)
                 block_until = curr_time + 1.5 
@@ -113,7 +113,9 @@ while cap.isOpened():
                 robot.move('x', 0)
                 robot.action(1)
             elif confirmed_cmd == "SIT":
-                robot.translation('z', -60)
+                robot.stop()
+                robot.translation('z', -75)
+                robot.attitude('p', 15)
             elif confirmed_cmd == "ATTENTION":
                 robot.translation('z', 0)
                 robot.action(1)
