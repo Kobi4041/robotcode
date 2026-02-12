@@ -2,7 +2,6 @@ import cv2
 import mediapipe as mp
 from gestures import count_fingers, get_combo_action
 import time
-import sys
 
 # --- אתחול רובוט ---
 try:
@@ -15,17 +14,16 @@ except:
         def turn(self, speed): print(f"[SIM] TURN: {speed}")
         def move(self, dir, step): print(f"[SIM] MOVE: {dir} {step}")
         def translation(self, axis, val): print(f"[SIM] TRANS: {axis} {val}")
+        def attitude(self, axis, val): print(f"[SIM] ATTITUDE: {axis} {val}")
     robot = XGO_Mock()
 
 # --- משתני שליטה ---
-REQUIRED_DURATION = 0.5  # קוצר ל-0.5 שניות לתגובה מהירה יותר
+REQUIRED_DURATION = 0.5 
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
 block_until = 0  
-
-# משתנים לזיהוי כפול של FOLLOW
 come_here_count = 0
 last_come_time = 0
 
@@ -44,96 +42,90 @@ while cap.isOpened():
     current_ui_right = "None"
     if results.multi_hand_landmarks:
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
-            label = results.multi_handedness[i].classification[0].label
-            if label == "Right":
-                current_ui_right = count_fingers(hand_lms, label)
+            if results.multi_handedness[i].classification[0].label == "Right":
+                current_ui_right = count_fingers(hand_lms, "Right")
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי פקודה גולמית
     raw_cmd = get_combo_action("None", current_ui_right)
 
-    # 2. ניהול צינון ויציבות
+    # 1. ניהול צינון ויציבות
     if curr_time < block_until:
         confirmed_cmd = "WAITING..."
     else:
         if raw_cmd == current_stable_candidate:
             if gesture_start_time == 0: gesture_start_time = curr_time
             if curr_time - gesture_start_time >= REQUIRED_DURATION:
-                
-                # --- לוגיקה לזיהוי כפול של FOLLOW ---
                 if raw_cmd == "FOLLOW":
-                    if curr_time - last_come_time > 5.0:
-                        come_here_count = 0
-                    
+                    if curr_time - last_come_time > 5.0: come_here_count = 0
                     if last_final_cmd != "FOLLOW" and confirmed_cmd != "FOLLOW":
                         come_here_count += 1
                         last_come_time = curr_time
-                        print(f">>> GESTURE: COME HERE ({come_here_count}/2)")
-                        
                         if come_here_count >= 2:
                             confirmed_cmd = "FOLLOW"
                             come_here_count = 0
                         else:
-                            # איפוס המועמד כדי לאפשר פעימה שנייה מהירה
                             current_stable_candidate = "NONE"
                             confirmed_cmd = "READY"
                 else:
                     confirmed_cmd = raw_cmd
-                    if raw_cmd != "READY":
-                        come_here_count = 0
+                    come_here_count = 0
         else:
             current_stable_candidate = raw_cmd
             gesture_start_time = curr_time
 
-    # 3. ביצוע פקודות
-    if robot:
-        if confirmed_cmd in ["HELLO", "SPINNING"] and curr_time > block_until:
-            if confirmed_cmd == "HELLO":
-                robot.action(13)
-                block_until = curr_time + 3.0 
-            
-            elif confirmed_cmd == "SPINNING":
-                robot.turn(120)
-                time.sleep(4)
-                robot.turn(0)
-                robot.action(1)
-                block_until = curr_time + 1.5 
-            
+    # 2. ביצוע פקודות
+    if robot and confirmed_cmd != "WAITING...":
+        # פקודות אקשן
+        if confirmed_cmd == "HELLO":
+            robot.action(13)
+            block_until = curr_time + 3.0
+            confirmed_cmd = "READY"
+        
+        elif confirmed_cmd == "SPINNING":
+            robot.turn(120)
+            time.sleep(4) # פקודה חוסמת לסיבוב
+            robot.turn(0)
+            robot.action(1)
+            block_until = curr_time + 1.0
             confirmed_cmd = "READY"
 
+        # תנועה רציפה
         elif confirmed_cmd == "FOLLOW":
             robot.move('x', 12)
-            
         elif confirmed_cmd == "REVERSE":
             robot.move('x', -12)
 
-        elif confirmed_cmd != last_final_cmd and confirmed_cmd != "WAITING...":
+        # שינוי מצב (סטטי)
+        elif confirmed_cmd != last_final_cmd:
+            robot.stop()
             if confirmed_cmd == "STOP":
-                robot.stop()
-                robot.move('x', 0)
+                robot.translation(['z', 'x'], [100, 0])
+                robot.attitude('p', 0)
                 robot.action(1)
-                if last_final_cmd != "SIT":
-                    robot.stop()
+            elif confirmed_cmd == "SIT":
+                robot.translation(['z', 'x'], [75, -20])
+                robot.attitude('p', 15)
+            elif confirmed_cmd == "ATTENTION":
+                robot.translation(['z', 'x'], [100, 0])
+                robot.attitude('p', 0)
+                robot.action(1)
+            elif confirmed_cmd == "READY":
+                # מניעת קימה אוטומטית מ-SIT
+                if last_final_cmd == "SIT":
+                    confirmed_cmd = "SIT"
+                else:
                     robot.move('x', 0)
                     robot.translation(['z', 'x'], [100, 0])
                     robot.attitude('p', 0)
-
             
-            elif confirmed_cmd == "ATTENTION":
-                robot.translation('z', 0)
-                robot.action(1)
-            elif confirmed_cmd == "READY":
-                robot.stop()
-                robot.move('x', 0)
-                robot.translation('z', 0)
+            last_final_cmd = confirmed_cmd
 
-    last_final_cmd = confirmed_cmd
-    
-    # תצוגה מעודכנת
+    # 3. תצוגה
+    color = (0, 0, 255) if confirmed_cmd == "WAITING..." else (0, 255, 0)
     display_text = f"CMD: {confirmed_cmd}"
     if come_here_count == 1: display_text += " (WAITING FOR 2nd)"
     
-    cv2.putText(img, display_text, (20, 50), 1, 1.5, (0, 255, 0), 2)
+    cv2.putText(img, display_text, (20, 50), 1, 1.5, color, 2)
     cv2.imshow("XGO Final Control", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
