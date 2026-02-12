@@ -89,12 +89,10 @@ def get_combo_action(left_gesture, right_gesture):
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     if right_gesture == "STOP": return "STOP"
-    if right_gesture == "THUMB_UP": return "BACK"
+    if right_gesture == "THUMB_UP": return "REVERSE"
     if right_gesture == "STAND": return "ATTENTION"
-    
-    # שינוי כאן: מחזירים SIT במקום LIE DOWN כדי להתאים לקוד הראשי
     if right_gesture == "SIT": return "SIT" 
     
-    if right_gesture == "BACK": return "REVERSE"
+   
     
     return "READY"
