@@ -14,16 +14,20 @@ except:
         def stop(self): print("[SIM] STOP")
         def turn(self, speed): print(f"[SIM] TURN: {speed}")
         def move(self, dir, step): print(f"[SIM] MOVE: {dir} {step}")
-        def translation(self, axis, val): pass
+        def translation(self, axis, val): print(f"[SIM] TRANS: {axis} {val}")
     robot = XGO_Mock()
 
 # --- משתני שליטה ---
-REQUIRED_DURATION = 0.8 
+REQUIRED_DURATION = 0.5  # קוצר ל-0.5 שניות לתגובה מהירה יותר
 gesture_start_time = 0
 current_stable_candidate = "READY"
 confirmed_cmd = "READY"
 last_final_cmd = ""
-block_until = 0  # תקופת הצינון ל-Wave ו-Spin
+block_until = 0  
+
+# משתנים לזיהוי כפול של FOLLOW
+come_here_count = 0
+last_come_time = 0
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
@@ -48,21 +52,41 @@ while cap.isOpened():
     # 1. זיהוי פקודה גולמית
     raw_cmd = get_combo_action("None", current_ui_right)
 
-    # 2. ניהול צינון - חוסם פקודות חדשות בזמן המתנה
+    # 2. ניהול צינון ויציבות
     if curr_time < block_until:
         confirmed_cmd = "WAITING..."
     else:
         if raw_cmd == current_stable_candidate:
             if gesture_start_time == 0: gesture_start_time = curr_time
             if curr_time - gesture_start_time >= REQUIRED_DURATION:
-                confirmed_cmd = raw_cmd
+                
+                # --- לוגיקה לזיהוי כפול של FOLLOW ---
+                if raw_cmd == "FOLLOW":
+                    if curr_time - last_come_time > 5.0:
+                        come_here_count = 0
+                    
+                    if last_final_cmd != "FOLLOW" and confirmed_cmd != "FOLLOW":
+                        come_here_count += 1
+                        last_come_time = curr_time
+                        print(f">>> GESTURE: COME HERE ({come_here_count}/2)")
+                        
+                        if come_here_count >= 2:
+                            confirmed_cmd = "FOLLOW"
+                            come_here_count = 0
+                        else:
+                            # איפוס המועמד כדי לאפשר פעימה שנייה מהירה
+                            current_stable_candidate = "NONE"
+                            confirmed_cmd = "READY"
+                else:
+                    confirmed_cmd = raw_cmd
+                    if raw_cmd != "READY":
+                        come_here_count = 0
         else:
             current_stable_candidate = raw_cmd
             gesture_start_time = curr_time
 
     # 3. ביצוע פקודות
     if robot:
-        # א. פקודות עם צינון (ביצוע פעם אחת והמתנה)
         if confirmed_cmd in ["HELLO", "SPINNING"] and curr_time > block_until:
             if confirmed_cmd == "HELLO":
                 robot.action(13)
@@ -77,14 +101,12 @@ while cap.isOpened():
             
             confirmed_cmd = "READY"
 
-        # ב. פקודות רציפות (הליכה קדימה / אחורה)
         elif confirmed_cmd == "FOLLOW":
-            robot.move('x', 12) # קדימה לאט
+            robot.move('x', 12)
             
         elif confirmed_cmd == "REVERSE":
-            robot.move('x', -12) # אחורה לאט (שימוש בערך שלילי)
+            robot.move('x', -12)
 
-        # ג. פקודות מצב (סטטיות)
         elif confirmed_cmd != last_final_cmd and confirmed_cmd != "WAITING...":
             if confirmed_cmd == "STOP":
                 robot.stop()
@@ -101,7 +123,12 @@ while cap.isOpened():
                 robot.translation('z', 0)
 
     last_final_cmd = confirmed_cmd
-    cv2.putText(img, f"CMD: {confirmed_cmd}", (20, 50), 1, 1, (0, 255, 0), 2)
+    
+    # תצוגה מעודכנת
+    display_text = f"CMD: {confirmed_cmd}"
+    if come_here_count == 1: display_text += " (WAITING FOR 2nd)"
+    
+    cv2.putText(img, display_text, (20, 50), 1, 1.5, (0, 255, 0), 2)
     cv2.imshow("XGO Final Control", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
