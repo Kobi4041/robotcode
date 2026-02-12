@@ -20,28 +20,10 @@ def detect_wave(hand_lms):
         curr = wave_history[i]
         next_avg = (wave_history[i+1] + wave_history[i+2]) / 2
         if (curr > prev_avg and curr > next_avg) or (curr < prev_avg and curr < next_avg):
-            direction_changes += 1
+            direction_changes += 1  
     return diff > 0.15 and direction_changes >= 3
 
-def detect_come_here(total_fingers):
-    global come_history
-    come_history.append(total_fingers)
-    
-    # הגדלנו מעט את ההיסטוריה ל-15 כדי לקלוט תנועה טבעית ואיטית יותר
-    if len(come_history) > 15: come_history.pop(0)
-    if len(come_history) < 15: return False
-    
-    # שינוי הלוגיקה:
-    # במקום לחפש אגרוף (0), אנחנו מחפשים ירידה משמעותית בכמות האצבעות.
-    # אם התחלת עם 4-5 אצבעות וסיימת עם 1-2, זו תנועת קיפול.
-    start_fingers = max(come_history[:7])   # המקסימום בתחילת התנועה
-    end_fingers = min(come_history[-7:])    # המינימום בסוף התנועה
-    
-    # תנאי גמיש יותר: התחלה של לפחות 3 אצבעות וסיום של פחות מ-2
-    has_folded = (start_fingers >= 3 and end_fingers <= 2)
-    
-    # בדיקה שהייתה באמת תנועה (ההתחלה גדולה מהסוף)
-    return has_folded and (start_fingers > end_fingers)
+
 
 def detect_circle(hand_lms):
     global finger_history
@@ -69,15 +51,19 @@ def count_fingers(hand_lms, hand_type):
     
     total_others = sum(fingers_open)
 
- 
+    # --- זיהוי אגודל למטה (REVERSE) ---
+    # האגודל נמוך משמעותית מהמפרק שלו ושאר האצבעות סגורות
+    
+
+    # --- זיהוי אגודל למעלה (ATTENTION) ---
+    # האגודל גבוה משמעותית מהמפרק שלו ושאר האצבעות סגורות
+   
 
     # --- בדיקת מחוות דינמיות ---
     if total_others >= 3 and detect_wave(hand_lms):
         return "WAVE"
 
-    if detect_come_here(total_others):
-        return "COME"
-
+    
     if fingers_open[0] == 1 and total_others == 1: 
         if detect_circle(hand_lms): return "SPIN"
 
@@ -85,6 +71,8 @@ def count_fingers(hand_lms, hand_type):
     if total_others == 0: return "STOP"    # אגרוף סגור
     if total_others == 1: return "STAND"   # אצבע אחת (לא אגודל)
     if total_others == 3: return "REVERSE"
+    if total_others == 2: return "SIT"
+    if total_others == 4: return "COME"
     
     return "READY"
 
