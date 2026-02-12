@@ -26,11 +26,22 @@ def detect_wave(hand_lms):
 def detect_come_here(total_fingers):
     global come_history
     come_history.append(total_fingers)
-    if len(come_history) > 10: come_history.pop(0) # קיצרנו ל-10 לזיהוי מהיר יותר
-    if len(come_history) < 10: return False
-    start_state = max(come_history[:5]) 
-    end_state = min(come_history[-5:])  
-    return start_state >= 4 and end_state <= 1
+    
+    # הגדלנו מעט את ההיסטוריה ל-15 כדי לקלוט תנועה טבעית ואיטית יותר
+    if len(come_history) > 15: come_history.pop(0)
+    if len(come_history) < 15: return False
+    
+    # שינוי הלוגיקה:
+    # במקום לחפש אגרוף (0), אנחנו מחפשים ירידה משמעותית בכמות האצבעות.
+    # אם התחלת עם 4-5 אצבעות וסיימת עם 1-2, זו תנועת קיפול.
+    start_fingers = max(come_history[:7])   # המקסימום בתחילת התנועה
+    end_fingers = min(come_history[-7:])    # המינימום בסוף התנועה
+    
+    # תנאי גמיש יותר: התחלה של לפחות 3 אצבעות וסיום של פחות מ-2
+    has_folded = (start_fingers >= 3 and end_fingers <= 2)
+    
+    # בדיקה שהייתה באמת תנועה (ההתחלה גדולה מהסוף)
+    return has_folded and (start_fingers > end_fingers)
 
 def detect_circle(hand_lms):
     global finger_history
