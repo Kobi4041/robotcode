@@ -69,14 +69,7 @@ def count_fingers(hand_lms, hand_type):
     
     total_others = sum(fingers_open)
 
-    # --- זיהוי אגודל למטה (REVERSE) ---
-    # האגודל נמוך משמעותית מהמפרק שלו ושאר האצבעות סגורות
-    
-
-    # --- זיהוי אגודל למעלה (ATTENTION) ---
-    # האגודל גבוה משמעותית מהמפרק שלו ושאר האצבעות סגורות
-    if total_others == 0 and thumb_tip.y < thumb_mcp.y - 0.04:
-        return "THUMB_UP"
+ 
 
     # --- בדיקת מחוות דינמיות ---
     if total_others >= 3 and detect_wave(hand_lms):
@@ -91,7 +84,7 @@ def count_fingers(hand_lms, hand_type):
     # --- מצבים סטטיים ---
     if total_others == 0: return "STOP"    # אגרוף סגור
     if total_others == 1: return "STAND"   # אצבע אחת (לא אגודל)
-    if total_others == 2: return "SIT"     # שתי אצבעות
+    if total_others == 3: return "REVERSE"
     
     return "READY"
 
@@ -100,7 +93,7 @@ def get_combo_action(left_gesture, right_gesture):
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     if right_gesture == "STOP": return "STOP"
-    if right_gesture == "THUMB_UP": return "REVERSE"
+    if right_gesture == "REVERSE": return "REVERSE"
     if right_gesture == "STAND": return "ATTENTION"
     if right_gesture == "SIT": return "SIT" 
     
