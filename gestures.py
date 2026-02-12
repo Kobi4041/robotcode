@@ -60,8 +60,7 @@ def count_fingers(hand_lms, hand_type):
 
     # --- זיהוי אגודל למטה (REVERSE) ---
     # האגודל נמוך משמעותית מהמפרק שלו ושאר האצבעות סגורות
-    if total_others == 0 and thumb_tip.y > thumb_mcp.y + 0.04:
-        return "BACK"
+    
 
     # --- זיהוי אגודל למעלה (ATTENTION) ---
     # האגודל גבוה משמעותית מהמפרק שלו ושאר האצבעות סגורות
@@ -90,9 +89,12 @@ def get_combo_action(left_gesture, right_gesture):
     if right_gesture == "COME": return "FOLLOW"
     if right_gesture == "SPIN": return "SPINNING"
     if right_gesture == "STOP": return "STOP"
-    if right_gesture == "THUMB_UP": return "ATTENTION"
+    if right_gesture == "THUMB_UP": return "BACK"
     if right_gesture == "STAND": return "ATTENTION"
-    if right_gesture == "SIT": return "LIE DOWN"
+    
+    # שינוי כאן: מחזירים SIT במקום LIE DOWN כדי להתאים לקוד הראשי
+    if right_gesture == "SIT": return "SIT" 
+    
     if right_gesture == "BACK": return "REVERSE"
     
     return "READY"
