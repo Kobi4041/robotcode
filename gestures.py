@@ -52,7 +52,7 @@ def count_fingers(hand_lms, hand_type):
     thumb_mcp = hand_lms.landmark[2]
     
     # בדיקה אם שאר האצבעות סגורות (8, 12, 16, 20)
-    fingers_open = []
+    fingers_open = []   
     for tip in [8, 12, 16, 20]:
         fingers_open.append(1 if hand_lms.landmark[tip].y < hand_lms.landmark[tip-2].y else 0)
     
