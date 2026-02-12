@@ -13,7 +13,7 @@ except:
         def stop(self): print("[SIM] STOP")
         def turn(self, speed): print(f"[SIM] TURN: {speed}")
         def move(self, direction, step): print(f"[SIM] MOVE: {direction} {step}")
-        def translation(self, axis, val): pass
+        def translation(self, axis, val): print(f"[SIM] TRANS: {axis} to {val}")
     robot = XGO_Mock()
 
 # --- משתני שליטה ---
@@ -26,7 +26,6 @@ block_until = 0
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
-# הגדרה ליד אחת בלבד כפי שביקשת
 hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mp_draw = mp.solutions.drawing_utils
 
@@ -41,17 +40,19 @@ while cap.isOpened():
     if results.multi_hand_landmarks:
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
             label = results.multi_handedness[i].classification[0].label
-            # עובדים רק עם יד ימין
             if label == "Right":
                 current_ui_right = count_fingers(hand_lms, label)
                 mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # 1. זיהוי פקודה גולמית מה-Gestures
+    # 1. זיהוי פקודה גולמית
     raw_cmd = get_combo_action("None", current_ui_right)
+    
+    # איחוד לוגי: אם חזר "LIE DOWN" מהמחוות, נתייחס אליו כ-"SIT"
+    if raw_cmd == "LIE DOWN":
+        raw_cmd = "SIT"
 
     # 2. ניהול צינון ויציבות
     if curr_time < block_until:
-        # בזמן פעולה ארוכה, אנחנו לא מחליפים פקודה
         display_status = "BUSY..."
     else:
         display_status = confirmed_cmd
@@ -65,9 +66,9 @@ while cap.isOpened():
 
     # 3. ביצוע פקודות רובוט
     if robot:
-        # א. פקודות אקשן חד-פעמיות
         if curr_time >= block_until:
             
+            # א. פקודות אקשן חד-פעמיות
             if confirmed_cmd == "HELLO":
                 print(">>> EVENT: HELLO ACTIVATED")
                 robot.action(13)
@@ -81,7 +82,6 @@ while cap.isOpened():
                 last_final_cmd = "SPIN_STARTED"
                 confirmed_cmd = "READY"
 
-            # בדיקת סיום סיבוב
             if last_final_cmd == "SPIN_STARTED" and curr_time >= block_until:
                 print(">>> SYSTEM: SPIN COMPLETED")
                 robot.turn(0)
@@ -100,13 +100,18 @@ while cap.isOpened():
                     print(">>> MOVE: REVERSE START")
                 robot.move('x', -12)
 
-            # ג. פקודות מצב (סטטיות) - מבוצעות רק בשינוי
+            # ג. פקודות מצב (סטטיות)
             elif confirmed_cmd != last_final_cmd:
                 if confirmed_cmd == "STOP":
                     print(">>> ACTION: STOP")
                     robot.stop()
                     robot.move('x', 0)
                     robot.action(1)
+                
+                elif confirmed_cmd == "SIT":
+                    print(">>> ACTION: SIT")
+                    robot.stop()
+                    robot.translation('z', -70) # גובה ישיבה אחיד
                 
                 elif confirmed_cmd == "ATTENTION":
                     print(">>> ACTION: ATTENTION")
