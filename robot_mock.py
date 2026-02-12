@@ -97,13 +97,22 @@ while cap.isOpened():
             block_until = curr_time + 4.0 # חסימה ל-4 שניות
             confirmed_cmd = "READY"
 
-        elif confirmed_cmd == "SPINNING":
+        # א. פקודות אקשן (ארוכות)
+        if confirmed_cmd == "SPINNING":
+            print(">>> EVENT: SPINNING STARTED")
             robot.turn(120)
-            time.sleep(4)
+            # אנחנו קובעים שזמן הסיום יהיה בעוד 4 שניות מהרגע הזה
+            # מוסיפים עוד 1.5 שניות לצינון (סה"כ 5.5)
+            block_until = time.time() + 5.5 
+            last_final_cmd = "SPIN_ACTIVE" # מסמנים שהסיבוב פעיל
+            confirmed_cmd = "READY"
+
+        # בדיקה אם סיבוב שהתחיל צריך להסתיים
+        if last_final_cmd == "SPIN_ACTIVE" and curr_time >= (block_until - 1.5):
+            print(">>> EVENT: SPINNING STOPPED")
             robot.turn(0)
             robot.action(1)
-            block_until = curr_time + 2.0 # חסימה לאחר הסיבוב
-            confirmed_cmd = "READY"
+            last_final_cmd = "READY"
 
         # ב. פקודות תנועה (מוסיפים חסימה קצרה למניעת קפיצות)
         elif confirmed_cmd == "FOLLOW":
@@ -113,36 +122,47 @@ while cap.isOpened():
         elif confirmed_cmd == "REVERSE":
             robot.move('x', -12)
 
-        # ג. פקודות מצב (סטטיות) - הוספת חסימה של 1.5 שניות לכל שינוי
+        # ג. פקודות מצב (סטטיות) - ישיבה, עמידה ועצירה
         elif confirmed_cmd != last_final_cmd and confirmed_cmd != "WAITING...":
             if confirmed_cmd == "STOP":
                 robot.stop()
                 robot.move('x', 0)
+                robot.translation(['z', 'x'], [100, 0])
+                robot.attitude('p', 0)
                 robot.action(1)
-                block_until = curr_time + 1.0 # חסימה לשנייה אחת
+                block_until = curr_time + 1.0
 
             elif confirmed_cmd == "SIT":
-                print(">>> ACTION: MAX REALISTIC SIT")
+                print(">>> ACTION: MAX REALISTIC SIT - LOCKED")
                 robot.stop()
                 robot.translation(['z', 'x'], [75, -20])
                 robot.attitude('p', 15)
-                block_until = curr_time + 2.0 # חסימה ל-2 שניות עד שיתייצב
+                # חסימה קצרה רק כדי שהתנועה תסתיים, אבל המצב נשאר SIT ב-confirmed_cmd
+                block_until = curr_time + 2.0 
 
             elif confirmed_cmd == "ATTENTION":
+                print(">>> ACTION: STANDING UP")
                 robot.stop()
                 robot.translation(['z', 'x'], [100, 0])
                 robot.attitude('p', 0)
                 robot.action(1)
-                block_until = curr_time + 2.0 # חסימה ל-2 שניות
+                block_until = curr_time + 2.0
 
             elif confirmed_cmd == "READY":
-                # ב-READY אנחנו לא חוסמים כדי לאפשר פקודה חדשה מיד
-                robot.stop()
-                robot.move('x', 0)
-                robot.translation(['z', 'x'], [100, 0])
-                robot.attitude('p', 0)
+                # רק אם הפקודה הקודמת לא הייתה SIT, נאפשר חזרה אוטומטית ל-READY
+                # זה מונע מהרובוט לקום לבד מישיבה
+                if last_final_cmd != "SIT":
+                    robot.stop()
+                    robot.move('x', 0)
+                    robot.translation(['z', 'x'], [100, 0])
+                    robot.attitude('p', 0)
+                else:
+                    # אם היינו ב-SIT והיד נעלמה, נשארים ב-SIT
+                    confirmed_cmd = "SIT"
 
             last_final_cmd = confirmed_cmd
+
+
 
     # תצוגה
     display_text = f"CMD: {confirmed_cmd}"
