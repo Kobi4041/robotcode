@@ -6,30 +6,6 @@ finger_history = []
 wave_history = []
 last_spin_time = 0 
 
-# !!! פונקציה חדשה: זיהוי לב בעזרת שתי ידיים
-def detect_heart_gesture(results):
-    """
-    מזהה צורת לב: בודקת אם קצות האגודלים (נקודה 4) קרובים זה לזה
-    וגם קצות האצבעות המורות (נקודה 8) קרובים זה לזה.
-    """
-    if not results.multi_hand_landmarks or len(results.multi_hand_landmarks) < 2:
-        return False
-
-    # חילוץ ציוני הדרך (Landmarks) של שתי הידיים
-    hand1 = results.multi_hand_landmarks[0].landmark
-    hand2 = results.multi_hand_landmarks[1].landmark
-
-    # קצות אגודלים (Thumb Tips - 4)
-    thumb_dist = math.sqrt((hand1[4].x - hand2[4].x)**2 + (hand1[4].y - hand2[4].y)**2)
-    
-    # קצות אצבעות מורות (Index Tips - 8)
-    index_dist = math.sqrt((hand1[8].x - hand2[8].x)**2 + (hand1[8].y - hand2[8].y)**2)
-
-    # סף של 0.08 נחשב קרוב מאוד (מגע)
-    if thumb_dist < 0.08 and index_dist < 0.08:
-        return True
-    return False
-
 def detect_wave(hand_lms):
     global wave_history
     pos_x = hand_lms.landmark[8].x 
@@ -71,8 +47,7 @@ def detect_circle(hand_lms):
     return False
 
 def count_fingers(hand_lms, hand_type):
-    if not hand_lms: 
-        return "NONE"
+    if not hand_lms: return "NONE"
     
     fingers_open = []   
     for tip in [8, 12, 16, 20]:
@@ -81,26 +56,20 @@ def count_fingers(hand_lms, hand_type):
     total_others = sum(fingers_open)
     if hand_type == "Right":
         thumb_open = 1 if hand_lms.landmark[4].x < hand_lms.landmark[3].x else 0
-    else: # Left hand
+    else:
         thumb_open = 1 if hand_lms.landmark[4].x > hand_lms.landmark[3].x else 0
 
-    if hand_type == "Left":
-        if total_others == 0: return "STOP"
-        if total_others == 1: return "STAND"
-        if total_others == 2: return "SIT"
-        return "NONE"
-
+    # מחוות דינמיות (רק ליד ימין)
     if hand_type == "Right":
-        if total_others == 4 and thumb_open == 1:
-            if detect_wave(hand_lms): return "HELLO"
-            return "FIVE_FINGERS"
-        if total_others == 1 and fingers_open[0] == 1:
-            if detect_circle(hand_lms): return "SPINNING"
-            return "STAND"
-        if total_others == 4 and thumb_open == 0: return "REVERSE"
-        if total_others == 2: return "SIT"
-        if total_others == 3: return "FOLLOW"
-        if total_others == 0: return "STOP"
-        if total_others == 1: return "STAND"
+        if total_others == 4 and thumb_open == 1 and detect_wave(hand_lms): return "HELLO"
+        if total_others == 1 and fingers_open[0] == 1 and detect_circle(hand_lms): return "CIRCLE"
+
+    # מחוות סטטיות
+    if total_others == 0 and thumb_open == 0: return "STOP"
+    if total_others == 1 and thumb_open == 0: return "STAND"
+    if total_others == 2 and thumb_open == 0: return "SIT"
+    if total_others == 3 and thumb_open == 0: return "FOLLOW"
+    if total_others == 4 and thumb_open == 0: return "REVERSE"
+    if total_others == 4 and thumb_open == 1: return "FIVE"
     
     return "NONE"
