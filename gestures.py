@@ -99,9 +99,12 @@ def count_fingers(hand_lms, hand_type):
     # --- בדיקת מחוות דינמיות (קודם כל!) ---
 
     # בדיקת שלום (HELLO) - מתבצעת כשהיד פתוחה
-    if total_others >= 3:
+    if total_others == 4 and thumb_open == 1:
         if detect_wave(hand_lms):
             return "HELLO"
+        
+        # 2. אם היד פתוחה אבל לא מנפנפת - זה FIVE_FINGERS (עמידה)
+        return "FIVE_FINGERS"
 
     # בדיקת סיבוב (SPINNING) - מתבצעת כשרק האצבע המורה למעלה
    
@@ -117,8 +120,7 @@ def count_fingers(hand_lms, hand_type):
 
     # --- בדיקת מחוות סטטיות (אם לא זוהתה תנועה דינמית) ---
     
-    if total_others == 4 and thumb_open == 1:
-        return "FIVE_FINGERS"
+    
     
     if total_others == 4 and thumb_open == 0:
         return "REVERSE"
