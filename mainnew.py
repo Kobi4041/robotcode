@@ -14,6 +14,10 @@ except:
         def reset(self): print("[SIM] RESET")
         def turn(self, val): print(f"[SIM] TURN: {val}")
         def move(self, dir, val): print(f"[SIM] MOVE: {dir} {val}")
+        def pace(self, p): pass
+        def mark_time(self, t): pass
+        def translation(self, a, v): pass
+        def attitude(self, a, v): pass
     robot = XGO_Mock()
 
 cap = cv2.VideoCapture(0)
@@ -48,22 +52,19 @@ while cap.isOpened():
 
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
 
-    # --- לוגיקת היררכיה משודרגת ---
+    # --- לוגיקת היררכיה "יד ימין בלבד + סיוע משמאל" ---
     right = hand_states["Right"]
     left = hand_states["Left"]
 
-    # 1. בדיקת פעולה משולבת (שתי הידיים בפריים)
-    if right == "SIT" and left == "SIT":
-        raw_cmd = "PUSHUPS"
+    if right != "NONE":
+        # אם ימין על SIT, נבדוק אם שמאל מסייעת ל-PUSHUPS
+        if right == "SIT" and left == "SIT":
+            raw_cmd = "PUSHUPS"
+        else:
+            # בכל מקרה אחר שיד ימין נמצאת, היא הקובעת
+            raw_cmd = right
     
-    
-    # 2. אם יד ימין בפריים (והיא לא חלק מפעולה משולבת), היא הקובעת הבלעדית
-    elif right != "NONE":
-        raw_cmd = right
-        
-    # 3. אם יד ימין לא נמצאה בכלל ("NONE"), יד שמאל לוקחת פיקוד
-    elif left != "NONE":
-        raw_cmd = left
+    # שים לב: אין כאן "elif left != NONE" - אם יד ימין לא בפריים, הרובוט לא יגיב ליד שמאל
 
     if raw_cmd != "NONE":
         confirmed_cmd = raw_cmd
@@ -79,40 +80,41 @@ while cap.isOpened():
     if confirmed_cmd != last_final_cmd:
         if not is_turning_360:
             robot.stop()
-            if confirmed_cmd == "PUSHUPS": robot.action(21)
+            if confirmed_cmd == "PUSHUPS": 
+                robot.action(21)
             elif confirmed_cmd == "SPINNING":
-                print("Starting 360 degree turn...")
-                robot.pace('normal')
-                robot.mark_time(20) # מרים רגליים
-                robot.turn(93)      # מהירות 90 מעלות לשנייה
+                robot.turn(93)
                 turn_start_time = current_time
                 is_turning_360 = True
             elif confirmed_cmd == "SIT":
+                # פקודת ישיבה "ידנית" דרך איברי הגוף
                 robot.translation(['z', 'x'], [75, -35])
                 robot.attitude('p', -15)
-            elif confirmed_cmd == "STAND": robot.reset()
-            elif confirmed_cmd == "STOP": robot.stop()
-            elif confirmed_cmd == "HELLO": robot.action(13)
-            elif confirmed_cmd == "FOLLOW": robot.move('x', 12)
-            elif confirmed_cmd == "REVERSE": robot.move('x', -12)
-           
-            
-
+            elif confirmed_cmd == "STAND": 
+                robot.reset()
+            elif confirmed_cmd == "STOP": 
+                robot.stop()
+            elif confirmed_cmd == "HELLO": 
+                robot.action(13)
+            elif confirmed_cmd == "FOLLOW": 
+                robot.move('x', 12)
+            elif confirmed_cmd == "REVERSE": 
+                robot.move('x', -12)
             
             last_final_cmd = confirmed_cmd
 
-    # --- תצוגה מפורטת ---
-    # צבע טקסט משתנה לפי מי ששולט
+    # --- תצוגה ---
+    # יד שמאל נצבעת רק כשהיא משתתפת ב-PUSHUPS
     r_color = (0, 255, 0) if right != "NONE" else (200, 200, 200)
-    l_color = (255, 0, 0) if (left != "NONE" and right == "NONE") or (left == "SIT" and right == "SIT") else (200, 200, 200)
+    l_color = (255, 255, 0) if (left == "SIT" and right == "SIT") else (100, 100, 100)
 
-    cv2.putText(img, f"Right (Master): {right}", (20, 50), 1, 1.2, r_color, 2)
-    cv2.putText(img, f"Left (Backup): {left}", (20, 90), 1, 1.2, l_color, 2)
+    cv2.putText(img, f"Right (CONTROL): {right}", (20, 50), 1, 1.2, r_color, 2)
+    cv2.putText(img, f"Left (ASSIST): {left}", (20, 90), 1, 1.2, l_color, 2)
     
-    status_text = f"ACTIVE CMD: {confirmed_cmd}"
+    status_text = f"CMD: {confirmed_cmd}"
     cv2.putText(img, status_text, (20, 450), 1, 2, (255, 255, 255), 3)
 
-    cv2.imshow("XGO Master/Backup System", img)
+    cv2.imshow("XGO Right Hand Master", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
