@@ -124,7 +124,7 @@ def count_fingers(hand_lms, hand_type):
         return "REVERSE"
 
     if total_others == 2: return "SIT"
-    if total_others == 3: return "COME"
+    if total_others == 3: return "FOLLOW"
     if total_others == 0: return "STOP"
     if total_others == 1: return "STAND"
     
