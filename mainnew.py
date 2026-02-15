@@ -55,8 +55,7 @@ while cap.isOpened():
     # 1. בדיקת פעולה משולבת (שתי הידיים בפריים)
     if right == "SIT" and left == "SIT":
         raw_cmd = "PUSHUPS"
-    if right == "FIVE" and left == "FIVE":
-        raw_cmd = "PEE"
+    
     
     # 2. אם יד ימין בפריים (והיא לא חלק מפעולה משולבת), היא הקובעת הבלעדית
     elif right != "NONE":
@@ -81,7 +80,6 @@ while cap.isOpened():
         if not is_turning_360:
             robot.stop()
             if confirmed_cmd == "PUSHUPS": robot.action(21)
-            elif confirmed_cmd == "PEE": robot.action(19)
             elif confirmed_cmd == "SPINNING":
                 print("Starting 360 degree turn...")
                 robot.pace('normal')
@@ -97,9 +95,8 @@ while cap.isOpened():
             elif confirmed_cmd == "HELLO": robot.action(13)
             elif confirmed_cmd == "FOLLOW": robot.move('x', 12)
             elif confirmed_cmd == "REVERSE": robot.move('x', -12)
-            elif confirmed_cmd == "FIVE": 
-                robot.action(10)
-                robot.reset()
+           
+            
 
             
             last_final_cmd = confirmed_cmd
