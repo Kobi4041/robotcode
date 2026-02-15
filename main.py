@@ -93,7 +93,7 @@ while cap.isOpened():
             
             elif confirmed_cmd == "STOP":
                 robot.move('x', 0)
-                robot.Turn(0)
+                robot.turn(0)
                 robot.mark_time(0)
 
             last_final_cmd = confirmed_cmd
@@ -108,4 +108,5 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
 
