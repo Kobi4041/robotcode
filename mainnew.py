@@ -92,7 +92,7 @@ while cap.isOpened():
             elif confirmed_cmd == "HELLO": robot.action(13)
             elif confirmed_cmd == "FOLLOW": robot.move('x', 12)
             elif confirmed_cmd == "REVERSE": robot.move('x', -12)
-            elif confirmed_cmd == "FIVE": robot.reset()
+            elif confirmed_cmd == "FIVE": robot.reset(10)
             
             last_final_cmd = confirmed_cmd
 
