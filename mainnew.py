@@ -1,6 +1,6 @@
 import cv2
 import mediapipe as mp
-from gestures import count_fingers, detect_heart # וודא שייבאת את שניהם
+from gestnew import count_fingers, detect_heart # וודא שייבאת את שניהם
 import time
 
 # --- אתחול רובוט ---
@@ -116,3 +116,4 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
