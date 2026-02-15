@@ -55,7 +55,7 @@ while cap.isOpened():
     if is_turning_360:
         # אם עברו 4 שניות (90 מעלות לשנייה * 4 = 360)
         if current_time - turn_start_time > 4.0:
-            robot.Turn(0)
+            robot.turn(0)
             robot.mark_time(0)
             is_turning_360 = False
             confirmed_cmd = "STAND" # מחזיר את המצב לעמידה בסוף הסיבוב
@@ -93,8 +93,7 @@ while cap.isOpened():
             
             elif confirmed_cmd == "STOP":
                 robot.move('x', 0)
-                robot.turn(0)
-                robot.mark_time(0)
+                
 
             last_final_cmd = confirmed_cmd
 
@@ -108,5 +107,3 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
-
-
