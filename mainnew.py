@@ -81,7 +81,7 @@ while cap.isOpened():
         if not is_turning_360:
             robot.stop()
             if confirmed_cmd == "PUSHUPS": robot.action(21)
-            elif confirmed_cmd == "SIT": robot.action(19)
+            elif confirmed_cmd == "PEE": robot.action(19)
             elif confirmed_cmd == "SPINNING":
                 print("Starting 360 degree turn...")
                 robot.pace('normal')
