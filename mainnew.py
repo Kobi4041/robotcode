@@ -1,6 +1,5 @@
 import cv2
 import mediapipe as mp
-# שינוי הייבוא לפונקציית הלב החדשה
 from gestnew import count_fingers, detect_heart_gesture 
 import time
 
@@ -41,37 +40,44 @@ while cap.isOpened():
     current_time = time.time()
     raw_cmd = "NONE"
     
-    # משתנים לתצוגה ויזואלית
     right_hand_status = "Not Detected"
     left_hand_status = "Not Detected"
     heart_detected = False
 
     # 1. זיהוי פקודות וציור שלדים
     if results.multi_hand_landmarks:
-        # א. בדיקה לזיהוי לב (שתי ידיים) - עדיפות עליונה
+        # א. בדיקה לזיהוי לב (עדיפות עליונה - שתי ידיים)
         if len(results.multi_hand_landmarks) >= 2:
             if detect_heart_gesture(results):
                 raw_cmd = "HEART"
                 heart_detected = True
         
-        # ב. לולאה לזיהוי אצבעות בכל יד וציור
+        # ב. בדיקה מי נמצא בפריים לצורך היררכיה
+        hand_labels = [res.classification[0].label for res in results.multi_handedness]
+        right_hand_in_frame = "Right" in hand_labels
+
+        # ג. לולאה לעיבוד כל יד בנפרד
         for i, hand_lms in enumerate(results.multi_hand_landmarks):
             hand_label = results.multi_handedness[i].classification[0].label
-            
-            # קבלת הפקודה מהיד הנוכחית (ימין או שמאל)
             hand_cmd = count_fingers(hand_lms, hand_label)
             
             if hand_label == "Right":
                 right_hand_status = hand_cmd
-                color = (0, 255, 0) # ירוק לימין
-                if not heart_detected:
-                    raw_cmd = hand_cmd if hand_cmd != "NONE" else raw_cmd
-            else: # Left
-                left_hand_status = hand_cmd
-                color = (0, 0, 255) # אדום לשמאל
-                if not heart_detected and (raw_cmd == "NONE" or raw_cmd == "STAND"):
-                    raw_cmd = hand_cmd if hand_cmd != "NONE" else raw_cmd
+                color = (0, 255, 0) # ירוק
+                # יד ימין תמיד קובעת אם היא קיימת (ולא מזהים לב)
+                if not heart_detected and hand_cmd != "NONE":
+                    raw_cmd = hand_cmd
             
+            else: # יד שמאל
+                left_hand_status = hand_cmd
+                color = (0, 0, 255) # אדום
+                # יד שמאל קובעת רק אם יד ימין לא בפריים ואין לב
+                if not heart_detected and not right_hand_in_frame:
+                    if hand_cmd != "NONE":
+                        raw_cmd = hand_cmd
+                elif not heart_detected and right_hand_in_frame:
+                    left_hand_status = f"LOCKED ({hand_cmd})" # חיווי שהיא מזוהה אך חסומה
+
             # ציור השלד
             mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS,
                                  mp_draw.DrawingSpec(color=color, thickness=2, circle_radius=2),
@@ -97,36 +103,23 @@ while cap.isOpened():
             elif confirmed_cmd == "SIT":
                 robot.translation(['z', 'x'], [75, -20]); robot.attitude('p', 15)
             elif confirmed_cmd == "HELLO": robot.action(13)
-            
-            # פקודה חדשה: לב (מפעיל אקשן שמחה)
-            elif confirmed_cmd == "HEART": 
-                print("Robot feels the love!")
-                robot.action(10) 
-                
+            elif confirmed_cmd == "HEART": robot.action(10) # שמחה
             elif confirmed_cmd == "SPINNING":
                 robot.turn(93); turn_start_time = current_time; is_turning_360 = True
             elif confirmed_cmd == "STOP": robot.move('x', 0); robot.turn(0)
             
             last_final_cmd = confirmed_cmd
 
-    # --- ויזואליזציה על המסך ---
-    # רקע שחור עליון
+    # --- ויזואליזציה ---
     cv2.rectangle(img, (0, 0), (640, 80), (0, 0, 0), -1)
+    cv2.putText(img, f"RIGHT (Master): {right_hand_status}", (20, 30), 1, 1.1, (0, 255, 0), 2)
+    cv2.putText(img, f"LEFT (Backup): {left_hand_status}", (330, 30), 1, 1.1, (0, 0, 255), 2)
     
-    # סטטוס יד ימין (ירוק)
-    cv2.putText(img, f"RIGHT: {right_hand_status}", (20, 30), 1, 1.2, (0, 255, 0), 2)
-    # סטטוס יד שמאל (אדום)
-    cv2.putText(img, f"LEFT: {left_hand_status}", (350, 30), 1, 1.2, (0, 0, 255), 2)
-    
-    # אינדיקטור לב (מרכז)
-    # צבע ורוד/אדום כשיש לב, אפור כשאין
     heart_ui_color = (147, 20, 255) if heart_detected else (100, 100, 100)
     cv2.putText(img, f"HEART DETECTED: {heart_detected}", (160, 65), 1, 1.5, heart_ui_color, 2)
-
-    # פקודה סופית בתחתית
     cv2.putText(img, f"ROBOT STATUS: {confirmed_cmd}", (20, 450), 1, 1.5, (255, 255, 255), 2)
 
-    cv2.imshow("XGO Heart & Gesture Control", img)
+    cv2.imshow("XGO Hierarchy Control", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
