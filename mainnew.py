@@ -46,7 +46,7 @@ while cap.isOpened():
     if results.multi_hand_landmarks:
         # א. בדיקה ללב (שתי ידיים)
         if len(results.multi_hand_landmarks) == 2:
-            if detect_heart(results):
+            if detect_heart_gesture(results):
                 raw_cmd = "HEART"
 
         # ב. אם אין לב, מחפשים פקודה מיד ימין
