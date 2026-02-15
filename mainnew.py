@@ -2,7 +2,7 @@ import cv2
 import mediapipe as mp
 import time
 # ייבוא מהקובץ gestnew.py שסיפקת
-from gestnew import count_fingers, detect_heart 
+from gestnew import count_fingers, detect_heart_gesture
 
 # --- אתחול רובוט ---
 try:
