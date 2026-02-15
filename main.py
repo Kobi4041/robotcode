@@ -87,7 +87,7 @@ while cap.isOpened():
                 print("Starting 360 degree turn...")
                 robot.pace('normal')
                 robot.mark_time(20) # מרים רגליים
-                robot.turn(90)      # מהירות 90 מעלות לשנייה
+                robot.turn(93)      # מהירות 90 מעלות לשנייה
                 turn_start_time = current_time
                 is_turning_360 = True
             
@@ -107,3 +107,4 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
