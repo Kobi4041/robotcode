@@ -77,8 +77,8 @@ while cap.isOpened():
                 robot.move('x', -12)
 
             elif confirmed_cmd == "SIT":
-                robot.translation(['z', 'x'], [75, -20])
-                robot.attitude('p', 15)
+                robot.translation(['z', 'x'], [75, -35])
+                robot.attitude('p', -15)
 
             elif confirmed_cmd == "HELLO":
                 robot.action(13)
@@ -107,5 +107,6 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
 
 
