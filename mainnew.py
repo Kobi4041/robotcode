@@ -1,6 +1,6 @@
 import cv2
 import mediapipe as mp
-from gestnew import count_fingers, detect_heart_gesture 
+from gestures import count_fingers, detect_heart # וודא שייבאת את שניהם
 import time
 
 # --- אתחול רובוט ---
@@ -28,6 +28,7 @@ turn_start_time = 0
 
 cap = cv2.VideoCapture(0)
 mp_hands = mp.solutions.hands
+# שינוי ל-2 ידיים מקסימום
 hands = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=2)
 mp_draw = mp.solutions.drawing_utils
 
@@ -40,86 +41,77 @@ while cap.isOpened():
     current_time = time.time()
     raw_cmd = "NONE"
     
-    right_hand_status = "Not Detected"
-    left_hand_status = "Not Detected"
-    heart_detected = False
-
-    # 1. זיהוי פקודות וציור שלדים
+    # 1. זיהוי הפקודה מהמצלמה
     if results.multi_hand_landmarks:
-        # א. בדיקה לזיהוי לב (עדיפות עליונה - שתי ידיים)
-        if len(results.multi_hand_landmarks) >= 2:
-            if detect_heart_gesture(results):
+        # א. בדיקה ראשונה: האם יש "לב" (דורש שתי ידיים)
+        if len(results.multi_hand_landmarks) == 2:
+            if detect_heart(results):
                 raw_cmd = "HEART"
-                heart_detected = True
-        
-        # ב. בדיקה מי נמצא בפריים לצורך היררכיה
-        hand_labels = [res.classification[0].label for res in results.multi_handedness]
-        right_hand_in_frame = "Right" in hand_labels
 
-        # ג. לולאה לעיבוד כל יד בנפרד
-        for i, hand_lms in enumerate(results.multi_hand_landmarks):
-            hand_label = results.multi_handedness[i].classification[0].label
-            hand_cmd = count_fingers(hand_lms, hand_label)
-            
-            if hand_label == "Right":
-                right_hand_status = hand_cmd
-                color = (0, 255, 0) # ירוק
-                # יד ימין תמיד קובעת אם היא קיימת (ולא מזהים לב)
-                if not heart_detected and hand_cmd != "NONE":
-                    raw_cmd = hand_cmd
-            
-            else: # יד שמאל
-                left_hand_status = hand_cmd
-                color = (0, 0, 255) # אדום
-                # יד שמאל קובעת רק אם יד ימין לא בפריים ואין לב
-                if not heart_detected and not right_hand_in_frame:
-                    if hand_cmd != "NONE":
-                        raw_cmd = hand_cmd
-                elif not heart_detected and right_hand_in_frame:
-                    left_hand_status = f"LOCKED ({hand_cmd})" # חיווי שהיא מזוהה אך חסומה
-
-            # ציור השלד
-            mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS,
-                                 mp_draw.DrawingSpec(color=color, thickness=2, circle_radius=2),
-                                 mp_draw.DrawingSpec(color=color, thickness=2))
+        # ב. אם לא זוהה לב, מחפשים פקודה מיד ימין בלבד
+        if raw_cmd == "NONE":
+            for i, hand_lms in enumerate(results.multi_hand_landmarks):
+                hand_label = results.multi_handedness[i].classification[0].label
+                # מציירים את השלד לכל יד שנמצאה
+                mp_draw.draw_landmarks(img, hand_lms, mp_hands.HAND_CONNECTIONS)
+                
+                # רק יד ימין מפעילה פקודות רגילות
+                if hand_label == "Right":
+                    raw_cmd = count_fingers(hand_lms, "Right")
 
     # 2. עדכון הזיכרון
     if raw_cmd != "NONE":
         confirmed_cmd = raw_cmd
 
-    # 3. ניהול סיבוב 360 מעלות
+    # 3. ניהול סיום סיבוב 360 מעלות
     if is_turning_360:
         if current_time - turn_start_time > 4.35:
-            robot.turn(0); robot.mark_time(0)
-            is_turning_360 = False; confirmed_cmd = "STAND"
+            robot.turn(0)
+            robot.mark_time(0)
+            is_turning_360 = False
+            confirmed_cmd = "STAND"
+            print("Finished 360 degree turn.")
 
     # 4. ביצוע פקודות ברובוט
     if robot and confirmed_cmd != last_final_cmd:
         if not is_turning_360:
             robot.stop() 
-            if confirmed_cmd == "FOLLOW": robot.move('x', 12)                 
-            elif confirmed_cmd == "STAND": robot.reset()
-            elif confirmed_cmd == "REVERSE": robot.move('x', -12)
-            elif confirmed_cmd == "SIT":
-                robot.translation(['z', 'x'], [75, -20]); robot.attitude('p', 15)
-            elif confirmed_cmd == "HELLO": robot.action(13)
-            elif confirmed_cmd == "HEART": robot.action(10) # שמחה
-            elif confirmed_cmd == "SPINNING":
-                robot.turn(93); turn_start_time = current_time; is_turning_360 = True
-            elif confirmed_cmd == "STOP": robot.move('x', 0); robot.turn(0)
             
+            if confirmed_cmd == "FOLLOW":
+                robot.move('x', 12) 
+            elif confirmed_cmd == "STAND":
+                robot.reset()
+            elif confirmed_cmd == "REVERSE":
+                robot.move('x', -12)
+            elif confirmed_cmd == "SIT":
+                robot.translation(['z', 'x'], [75, -35])
+                robot.attitude('p', -15)
+            elif confirmed_cmd == "HELLO":
+                robot.action(13)
+            elif confirmed_cmd == "HEART":
+                print("Heart gesture detected! Robot is happy.")
+                robot.action(10) # פעולת שמחה/ריקוד
+            elif confirmed_cmd == "SPINNING":
+                robot.pace('normal')
+                robot.mark_time(20)
+                robot.turn(93)
+                turn_start_time = current_time
+                is_turning_360 = True
+            elif confirmed_cmd == "STOP":
+                robot.move('x', 0)
+                robot.turn(0)
+
             last_final_cmd = confirmed_cmd
 
-    # --- ויזואליזציה ---
-    cv2.rectangle(img, (0, 0), (640, 80), (0, 0, 0), -1)
-    cv2.putText(img, f"RIGHT (Master): {right_hand_status}", (20, 30), 1, 1.1, (0, 255, 0), 2)
-    cv2.putText(img, f"LEFT (Backup): {left_hand_status}", (330, 30), 1, 1.1, (0, 0, 255), 2)
+    # תצוגה
+    status_text = f"CMD: {confirmed_cmd}"
+    if is_turning_360: status_text += " (TURNING...)"
     
-    heart_ui_color = (147, 20, 255) if heart_detected else (100, 100, 100)
-    cv2.putText(img, f"HEART DETECTED: {heart_detected}", (160, 65), 1, 1.5, heart_ui_color, 2)
-    cv2.putText(img, f"ROBOT STATUS: {confirmed_cmd}", (20, 450), 1, 1.5, (255, 255, 255), 2)
-
-    cv2.imshow("XGO Hierarchy Control", img)
+    # צבע טקסט משתנה ללב (ורוד) כשהוא מזוהה
+    color = (203, 192, 255) if confirmed_cmd == "HEART" else (0, 255, 0)
+    
+    cv2.putText(img, status_text, (20, 50), 1, 1.5, color, 2)
+    cv2.imshow("XGO Dual Hand Control", img)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
