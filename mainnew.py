@@ -83,16 +83,24 @@ while cap.isOpened():
             if confirmed_cmd == "PUSHUPS": robot.action(21)
             elif confirmed_cmd == "SIT": robot.action(19)
             elif confirmed_cmd == "SPINNING":
-                robot.turn(93)
+                print("Starting 360 degree turn...")
+                robot.pace('normal')
+                robot.mark_time(20) # מרים רגליים
+                robot.turn(93)      # מהירות 90 מעלות לשנייה
                 turn_start_time = current_time
                 is_turning_360 = True
-            elif confirmed_cmd == "SIT": robot.action(1)
+            elif confirmed_cmd == "SIT":
+                robot.translation(['z', 'x'], [75, -35])
+                robot.attitude('p', -15)
             elif confirmed_cmd == "STAND": robot.reset()
             elif confirmed_cmd == "STOP": robot.stop()
             elif confirmed_cmd == "HELLO": robot.action(13)
             elif confirmed_cmd == "FOLLOW": robot.move('x', 12)
             elif confirmed_cmd == "REVERSE": robot.move('x', -12)
-            elif confirmed_cmd == "FIVE": robot.action(10)
+            elif confirmed_cmd == "FIVE": 
+                robot.action(10)
+                robot.reset()
+
             
             last_final_cmd = confirmed_cmd
 
