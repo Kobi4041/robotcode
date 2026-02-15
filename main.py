@@ -54,7 +54,7 @@ while cap.isOpened():
     # 3. ניהול סיום סיבוב 360 מעלות (בדיקה בכל פריים)
     if is_turning_360:
         # אם עברו 4 שניות (90 מעלות לשנייה * 4 = 360)
-        if current_time - turn_start_time > 4.0:
+        if current_time - turn_start_time > 4.35:
             robot.turn(0)
             robot.mark_time(0)
             is_turning_360 = False
@@ -107,4 +107,5 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+
 
