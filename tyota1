@@ -73,3 +73,4 @@ def count_fingers(hand_lms, hand_type):
     if total_others == 4 and thumb_open == 1: return "FIVE"
     
     return "NONE"
+
